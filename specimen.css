@@ -25,10 +25,13 @@ body {
 
 .grain {
   position: relative;
-  /* .tabs below intentionally bleeds to 100vw; clip any sub-pixel/scrollbar
-     overflow here so it can never introduce horizontal scroll on the host
-     Squarespace page. */
-  overflow-x: hidden;
+  /* NOTE: no overflow-x:hidden here -- .tabs below intentionally bleeds to
+     100vw, and clipping overflow at this wrapper (which Squarespace nests
+     inside its own narrower, offset "fluid-engine" column) cuts the bleed
+     off at THIS box's edges instead of the true viewport edge, silently
+     defeating the whole effect. The calc(-50vw + 50%) math is exact, so it
+     doesn't introduce a stray scrollbar in practice -- verified against a
+     live page (body.scrollWidth === documentElement.clientWidth). */
 }
 
 .wrap {
