@@ -5,7 +5,7 @@ self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 
 self.addEventListener('push', (e) => {
   const d = e.data ? e.data.json() : {};
-  e.waitUntil(self.registration.showNotification(d.title || 'Feel Good', {
+  e.waitUntil(self.registration.showNotification(d.title ?? 'Feel Good', {
     body: d.body || '',
     icon: 'icons/icon-192.png',
     data: { url: d.url || './' }
