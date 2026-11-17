@@ -1016,7 +1016,8 @@
       const [ratings, setRatings] = useState({ liked: [], disliked: [] });
       const [practiceAff, setPracticeAff] = useState(null);
       const [mantraSet, setMantraSet] = useState(null);   // your personal ~10 mantras: [{ idx, text }]
-      const [mantraRows, setMantraRows] = useState([]);   // every day's mantra (affirmations table) → "Practiced N times"
+      const [mantraRows, setMantraRows] = useState([]);
+      const [mantraPracticeLog, setMantraPracticeLog] = useState({}); // practices from Profile → Mantras: { normalizedText: count }   // every day's mantra (affirmations table) → "Practiced N times"
       const [dailyPrompt, setDailyPrompt] = useState("");
       const [activePromptKey, setActivePromptKey] = useState(null);
       const [activePromptDateLabel, setActivePromptDateLabel] = useState(null);
@@ -1182,6 +1183,7 @@
           else setAffirmation(cachedAff);
         }
         // Personal mantra set (seeded once from hearted + built-in mantras).
+        storageGet('settings:mantra_practice_log').then(v => { if (v && typeof v === 'object') setMantraPracticeLog(v); }).catch(() => {});
         Promise.all([storageGet('settings:mantra_set'), sbList('affirmations', 'date_key,body,idx')]).then(async ([storedSet, aRowsAll]) => {
           const rowsAll = Array.isArray(aRowsAll) ? aRowsAll : [];
           setMantraRows(rowsAll);
@@ -1340,7 +1342,13 @@
       // ─── Mantra set helpers ──────────────────────────────────────────
       const mantraCounts = {};
       mantraRows.forEach(r => { const k = normMantra(r.body); if (k) mantraCounts[k] = (mantraCounts[k] || 0) + 1; });
-      const mantraPracticedFor = (t) => mantraCounts[normMantra(t)] || 0;
+      const mantraPracticedFor = (t) => (mantraCounts[normMantra(t)] || 0) + ((mantraPracticeLog || {})[normMantra(t)] || 0);
+      async function logMantraPractice(m) {
+        const k = normMantra(m.text); if (!k) return;
+        const next = { ...(mantraPracticeLog || {}), [k]: ((mantraPracticeLog || {})[k] || 0) + 1 };
+        setMantraPracticeLog(next);
+        await storageSet('settings:mantra_practice_log', next);
+      }
       async function saveMantraSet(next) {
         setMantraSet(next);
         await storageSet('settings:mantra_set', next);
@@ -1961,8 +1969,8 @@
 
       // ─── AFFIRMATION HISTORY VIEW ──────────────────────────────────
       if (view === "affirmation-history") {
-        return <AffirmationHistoryView likedIdxs={new Set(ratings.liked || [])} onBack={goBackView}
-          onPractice={(a) => { setPracticeAff(a); navigate("affirmation-practice"); }} />;
+        return <MantraLibraryView items={mantraSet} practicedFor={mantraPracticedFor} onBack={goBackView}
+          onSaveSet={saveMantraSet} onSuggest={suggestMantra} onPracticed={logMantraPractice} />;
       }
 
       if (view === "physical-health") {
@@ -2464,7 +2472,7 @@
             onNavJournals={() => navigate("journal-entries")}
             onNavAffirmations={() => navigate("affirmation-history")}
             onNavPhysicalHealth={() => navigate("physical-health")}
-            likedCount={(ratings.liked || []).length}
+            likedCount={(mantraSet || []).length}
             goodDays={goodDays}
             hardDays={hardDays}
             neutralDays={neutralDays}
@@ -3309,6 +3317,7 @@
     const MANTRA_WORD_MS = 480; // "Calm" pace
     const MANTRA_REPS = 5;
     const MANTRA_DEEP = "#485942"; // second card in the stack (Figma)
+    const MANTRA_LIB_COLORS = ["#6B7866", "#485942", "#32452B"]; // profile → Mantras deck (Figma 218:1931) — literal: the colour consts are defined further down
     const normMantra = (t) => String(t || '').trim().toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
 
     // Seed the personal set the first time: hearted mantras first, then
@@ -3379,13 +3388,43 @@
     }
     // Label / practiced count — shared by the deck card and the growing
     // card so they fade out in exactly the same spots.
-    function MantraCardChrome({ label, labelColor, practiced, height }) {
+    function MantraCardChrome({ label, labelColor, practiced, height, library, onPractice }) {
       return (
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, height, pointerEvents: "none" }}>
           <div style={{ position: "absolute", top: 36, left: 0, right: 0, textAlign: "center", ...mantraLabelStyle(labelColor) }}>{label}</div>
-          <div style={{ position: "absolute", bottom: 50, left: 0, right: 0, textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 10, color: shale }}>
+          <div style={{ position: "absolute", bottom: library ? 84 : 50, left: 0, right: 0, textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 10, color: shale }}>
             Practiced {practiced} time{practiced === 1 ? "" : "s"}
           </div>
+          {library && (
+            <div style={{ position: "absolute", bottom: 32, left: 0, right: 0, display: "flex", justifyContent: "center" }}>
+              <MantraPill onClick={onPractice} style={{ pointerEvents: onPractice ? "auto" : "none" }}>PRACTICE</MantraPill>
+            </div>
+          )}
+        </div>
+      );
+    }
+    // Mantra text that shrinks (from `max` px) until it fits its box.
+    function FitMantraText({ text, max = 30, min = 18 }) {
+      const { useState: useS, useLayoutEffect: useLE, useRef: useR } = React;
+      const boxRef = useR(null);
+      const [size, setSize] = useS(max);
+      useLE(() => {
+        const box = boxRef.current; if (!box) return;
+        const fit = () => {
+          let sz = max;
+          const p = box.querySelector("p"); if (!p) return;
+          p.style.fontSize = sz + "px"; p.style.lineHeight = Math.round(sz * 1.2) + "px";
+          while (sz > min && p.scrollHeight > box.clientHeight) {
+            sz -= 2; p.style.fontSize = sz + "px"; p.style.lineHeight = Math.round(sz * 1.2) + "px";
+          }
+          setSize(sz);
+        };
+        fit();
+        if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+      }, [text, max, min]);
+      return (
+        <div ref={boxRef} style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+          <MantraText text={text} size={size} style={{ width: "100%", maxWidth: "none", lineHeight: Math.round(size * 1.2) + "px" }} />
         </div>
       );
     }
@@ -3393,7 +3432,7 @@
 
     // Swipeable stack — same geometry/easing as the favorites deck, with the
     // back cards peeking out below (Figma: Mantras – 1 Pick).
-    function MantraDeck({ items, index, setIndex, height, frontRef, cardInfo, goRef, onTouched, locked }) {
+    function MantraDeck({ items, index, setIndex, height, frontRef, cardInfo, goRef, onTouched, locked, library, onPractice }) {
       const { useState: useS, useEffect: useE, useRef: useR } = React;
       const n = items.length;
       const at = (i) => items[((i % n) + n) % n];
@@ -3410,17 +3449,18 @@
       }, [phase]);
       if (goRef) goRef.current = (d) => { if (phase === "idle" && !locked) exit(d); };
 
-      const down = (e) => { if (phase !== "idle" || locked || n < 2) return; startX.current = e.clientX; setPhase("dragging"); e.currentTarget.setPointerCapture?.(e.pointerId); };
+      const down = (e) => { if (phase !== "idle" || locked || n < 2 || (e.target.closest && e.target.closest("button"))) return; startX.current = e.clientX; setPhase("dragging"); e.currentTarget.setPointerCapture?.(e.pointerId); };
       const move = (e) => { if (phase === "dragging") setDx(e.clientX - startX.current); };
       const up = () => { if (phase !== "dragging") return; if (dx < -70) exit(-1); else if (dx > 70) exit(1); else { setDx(0); setPhase("idle"); } };
 
       const roleOf = (k) => phase === "exiting" ? (dir === -1 ? k - 1 : k + 1) : k;
       const look = (r, isFront) => {
         if (r < 0)   return { t: `translateX(${-EXIT}px) rotate(-14deg)`, o: 0, bg: ink, dim: 1 };
-        if (r === 0) return { t: isFront && phase === "dragging" ? `translateX(${dx}px) rotate(${dx / 26}deg)` : "none", o: 1, bg: ink, dim: 1 };
-        if (r === 1) return { t: "translateY(9px) scale(0.94)", o: 1, bg: MANTRA_DEEP, dim: 0.55 };
-        if (r === 2) return { t: "translateY(18px) scale(0.87)", o: 1, bg: sage, dim: 0.28 };
-        return { t: "translateY(18px) scale(0.87)", o: 0, bg: sage, dim: 0 };
+        const C = library ? MANTRA_LIB_COLORS : [ink, MANTRA_DEEP, sage];
+        if (r === 0) return { t: isFront && phase === "dragging" ? `translateX(${dx}px) rotate(${dx / 26}deg)` : "none", o: 1, bg: C[0], dim: 1 };
+        if (r === 1) return { t: "translateY(9px) scale(0.94)", o: 1, bg: C[1], dim: 0.55 };
+        if (r === 2) return { t: "translateY(18px) scale(0.87)", o: 1, bg: C[2], dim: 0.28 };
+        return { t: "translateY(18px) scale(0.87)", o: 0, bg: C[2], dim: 0 };
       };
       const ks = n >= 5 ? [-1, 0, 1, 2, 3] : n >= 3 ? [0, 1, 2] : n === 2 ? [0, 1] : [0];
 
@@ -3441,10 +3481,17 @@
                   cursor: front ? "grab" : "default", pointerEvents: front ? "auto" : "none",
                   transition: k === 0 && phase === "dragging" ? "none" : `transform .42s ${MANTRA_EASE}, opacity .42s ${MANTRA_EASE}, background .42s ${MANTRA_EASE}` }}>
                 <div style={{ opacity: L.dim, transition: `opacity .42s ${MANTRA_EASE}` }}>
-                  <MantraCardChrome label={info.label} labelColor={info.labelColor} practiced={info.practiced} height={height} />
-                  <div data-mantra-text style={{ position: "absolute", top: 76, left: 26, right: 26, bottom: 80, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <MantraText text={m.text} size={20} style={{ width: "100%", maxWidth: "none" }} />
-                  </div>
+                  <MantraCardChrome label={info.label} labelColor={info.labelColor} practiced={info.practiced} height={height}
+                    library={library} onPractice={front && onPractice ? () => onPractice(m) : undefined} />
+                  {library ? (
+                    <div data-mantra-text style={{ position: "absolute", top: 66, left: 36, right: 36, bottom: 104 }}>
+                      <FitMantraText text={m.text} />
+                    </div>
+                  ) : (
+                    <div data-mantra-text style={{ position: "absolute", top: 76, left: 26, right: 26, bottom: 80, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <MantraText text={m.text} size={20} style={{ width: "100%", maxWidth: "none" }} />
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -3473,7 +3520,7 @@
 
     // The scrolling "lyrics" — 5 passes, the active one lights up letter by
     // letter. Tap to pause.
-    function MantraRun({ text, reps, wordMs, centerY, textH = 84, vpH = 844, onFinish }) {
+    function MantraRun({ text, reps, wordMs, centerY, textH = 84, vpH = 844, firstLabel, onFinish }) {
       const { useState: useS, useEffect: useE, useMemo: useM } = React;
       const tl = useM(() => mantraTimeline(text, wordMs), [text, wordMs]);
       const LEAD = 450, GAP = 550, repDur = tl.total + GAP;
@@ -3491,7 +3538,7 @@
       return (
         <div style={{ position: "absolute", inset: 0 }} onClick={() => !finishing && setPaused(p => !p)}>
           <div key={cur} style={{ position: "absolute", top: `calc(${centerY} - ${Math.round(textH / 2 + MANTRA_LABEL_GAP)}px)`, left: 0, right: 0, textAlign: "center", ...mantraLabelStyle(tangerine),
-            animation: "fadeIn .4s ease", opacity: finishing ? 0 : 1, transition: "opacity .4s" }}>{mantraRepLabel(cur, reps)}</div>
+            animation: "fadeIn .4s ease", opacity: finishing ? 0 : 1, transition: "opacity .4s" }}>{cur === 0 && firstLabel ? firstLabel : mantraRepLabel(cur, reps)}</div>
           {Array.from({ length: reps }).map((_, i) => {
             const d = i - cur;
             // Lines above the active one also clear the label; lines below
@@ -3525,7 +3572,9 @@
     // The whole Mantra step. pick → growing → intro → run → reveal →
     // shrinking → done → (Continue = save the check-in). "Practice again"
     // on the done card grows it again; ← back on the intro shrinks back.
-    function MantraStepView({ items, practicedFor, initial, suggestion, isToday, topBar, dotsEl, stepLabel, saving, onComplete, onEditSet, requestLine }) {
+    // library = the profile's Mantras page: same deck + run-through, but each
+    // card has its own Practice button and finishing shrinks back into the deck.
+    function MantraStepView({ items, practicedFor, initial, suggestion, isToday, topBar, dotsEl, stepLabel, saving, onComplete, onEditSet, requestLine, library, onBack, onPracticed }) {
       const { useState: useS, useEffect: useE, useRef: useR, useMemo: useM } = React;
       const [phase, setPhase] = useS("pick");
       const [index, setIndex] = useS(0);
@@ -3578,6 +3627,7 @@
       }, [items, initial && initial.text, suggestion && suggestion.pick, frozen]);
       const freeze = () => { if (!touchedRef.current) { touchedRef.current = true; setFrozen(deck); } };
       const cardInfo = (m) => {
+        if (library) return { label: "Mantra", labelColor: shale, practiced: practicedFor(m.text) };
         const isFirst = deck.first && m === deck.first;
         if (isFirst && deck.firstKind === "suggested") return { label: "Suggested for today", labelColor: cream, practiced: practicedFor(m.text) };
         if (isFirst && deck.firstKind === "initial") return { label: isToday ? "Today’s mantra" : "Your mantra", labelColor: cream, practiced: practicedFor(m.text) };
@@ -3600,22 +3650,28 @@
         const b = p.getBoundingClientRect();
         return b.top + b.height / 2;
       };
+      const deckTextSize = () => {
+        const p = frontRef.current && frontRef.current.querySelector("[data-mantra-text] p");
+        return p ? parseFloat(getComputedStyle(p).fontSize) || 20 : 20;
+      };
+      const cardBg = library ? MANTRA_LIB_COLORS[0] : ink;
+      const firstLabel = library ? "Your mantra" : "Today’s mantra";
 
-      function morph(fromRect, toRect, from, to, chrome, after) {
-        setOv({ rect: fromRect, anim: false, chrome }); setFl({ ...from, anim: false });
-        nextFrame(() => { setOv(o => o && ({ ...o, rect: toRect, anim: true })); setFl({ ...to, anim: true }); });
+      function morph(fromRect, toRect, from, to, chrome, after, bgFrom = ink, bgTo = ink) {
+        setOv({ rect: fromRect, anim: false, chrome, bg: bgFrom }); setFl({ ...from, anim: false });
+        nextFrame(() => { setOv(o => o && ({ ...o, rect: toRect, anim: true, bg: bgTo })); setFl({ ...to, anim: true }); });
         later(after, MANTRA_GROW_MS + 30);
       }
       function growFromPick() {
-        if (!current || !frontRef.current) return;
+        if (!current || !frontRef.current || phase !== "pick") return;
         freeze();
         const rect = rectOf(frontRef.current);
         setChosen(current); setOrigin("pick"); setPhase("growing");
         setLine("");
         const req = ++lineReqRef.current;
         requestLine && requestLine(current.text).then(l => { if (lineReqRef.current === req) setLine(l || ""); }).catch(() => {});
-        morph(rect, FULL, { y: deckTextY(rect), size: 20 }, { y: centerY, size: 30 },
-          { from: "pick", fade: "out", info: cardInfo(current), h: rect.height }, () => setPhase("intro"));
+        morph(rect, FULL, { y: deckTextY(rect), size: deckTextSize() }, { y: centerY, size: 30 },
+          { from: "pick", fade: "out", info: cardInfo(current), h: rect.height }, () => setPhase("intro"), cardBg, ink);
       }
       function growFromDone() {
         if (!doneCardRef.current) return;
@@ -3631,14 +3687,16 @@
           if (!el) { setOv(null); setFl(null); setPhase(back); return; }
           const rect = rectOf(el);
           morph(FULL, rect, { y: centerY, size: 30 },
-            back === "done" ? { y: rect.top + 82, size: 20 } : { y: deckTextY(rect), size: 20 },
+            back === "done" ? { y: rect.top + 82, size: 20 } : { y: deckTextY(rect), size: deckTextSize() },
             back === "pick" ? { from: "pick", fade: "in", info: cardInfo(chosen), h: rect.height } : null,
-            () => { setOv(null); setFl(null); setPhase(back); });
+            () => { setOv(null); setFl(null); setPhase(back); }, ink, back === "pick" ? cardBg : ink);
         });
       }
+      const fromReveal = useR(false);
       function begin() { setFl(null); setRunKey(k => k + 1); setPhase("run"); }
       function finishRun() { setFl({ y: centerY, size: 30, anim: false }); setPhase("reveal"); }
       function complete() {
+        if (library) { const m = chosen; fromReveal.current = true; later(() => { fromReveal.current = false; }, MANTRA_GROW_MS + 60); closeIntro(); onPracticed && m && onPracticed(m); return; }
         setPhase("shrinking");
         nextFrame(() => {
           if (!doneCardRef.current) { setOv(null); setFl(null); setPhase("done"); return; }
@@ -3661,11 +3719,11 @@
           {(ov || ["intro", "run", "reveal"].includes(phase)) && (() => {
             const r = ov ? ov.rect : FULL;
             return (
-              <div style={{ position: "absolute", top: r.top, left: r.left, width: r.width, height: r.height, borderRadius: r.r, background: ink, overflow: "hidden",
-                transition: ov && ov.anim ? ["top", "left", "width", "height", "border-radius"].map(p => `${p} ${MANTRA_GROW_MS}ms ${MANTRA_EASE}`).join(", ") : "none" }}>
+              <div style={{ position: "absolute", top: r.top, left: r.left, width: r.width, height: r.height, borderRadius: r.r, background: ov && ov.bg ? ov.bg : ink, overflow: "hidden",
+                transition: ov && ov.anim ? ["top", "left", "width", "height", "border-radius", "background-color"].map(p => `${p} ${MANTRA_GROW_MS}ms ${MANTRA_EASE}`).join(", ") : "none" }}>
                 {ov && ov.chrome && ov.chrome.from === "pick" && (
                   <div style={{ position: "absolute", top: 0, left: 0, width: r.width, animation: ov.chrome.fade === "out" ? "mantraFadeOut .22s ease forwards" : `mantraFadeIn .25s ease ${MANTRA_GROW_MS - 220}ms both` }}>
-                    <MantraCardChrome label={ov.chrome.info.label} labelColor={ov.chrome.info.labelColor} practiced={ov.chrome.info.practiced} height={ov.chrome.h} />
+                    <MantraCardChrome label={ov.chrome.info.label} labelColor={ov.chrome.info.labelColor} practiced={ov.chrome.info.practiced} height={ov.chrome.h} library={library} />
                   </div>
                 )}
                 {ov && ov.chrome && ov.chrome.from === "done" && (
@@ -3691,25 +3749,54 @@
           {phase === "intro" && (
             <div style={{ position: "absolute", inset: 0, animation: "mantraFadeIn .45s ease both" }}>
               <button onClick={closeIntro} style={{ position: "absolute", top: "calc(env(safe-area-inset-top) + 20px)", left: 24, background: "none", border: "none", fontFamily: "'DM Mono', monospace", fontSize: 11, color: sage, letterSpacing: "0.05em", cursor: "pointer", padding: 0 }}>← back</button>
-              <div style={{ position: "absolute", top: `calc(${centerY} - ${Math.round(textH / 2 + MANTRA_LABEL_GAP)}px)`, left: 0, right: 0, textAlign: "center", ...mantraLabelStyle(tangerine) }}>Today’s mantra</div>
+              <div style={{ position: "absolute", top: `calc(${centerY} - ${Math.round(textH / 2 + MANTRA_LABEL_GAP)}px)`, left: 0, right: 0, textAlign: "center", ...mantraLabelStyle(tangerine) }}>{firstLabel}</div>
               <p style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", width: 280, bottom: "calc(160px + env(safe-area-inset-bottom))", fontFamily: "'Lora', Georgia, serif", fontStyle: "italic", fontSize: 16, lineHeight: "22px", color: "#fff", textAlign: "center", margin: 0 }}>
                 Read along as the words light up — out loud if you can. Five times through.
               </p>
               <button onClick={begin} style={btnStyle(true)}>Begin</button>
             </div>
           )}
-          {phase === "run" && chosen && <MantraRun key={runKey} text={chosen.text} reps={MANTRA_REPS} wordMs={MANTRA_WORD_MS} centerY={centerY} textH={textH} vpH={vp.h} onFinish={finishRun} />}
+          {phase === "run" && chosen && <MantraRun key={runKey} text={chosen.text} reps={MANTRA_REPS} wordMs={MANTRA_WORD_MS} centerY={centerY} textH={textH} vpH={vp.h} firstLabel={firstLabel} onFinish={finishRun} />}
           {phase === "reveal" && (
             <div style={{ position: "absolute", inset: 0, animation: "mantraFadeIn .5s ease both" }}>
               <div style={{ position: "absolute", top: `calc(${centerY} - ${Math.round(textH / 2 + MANTRA_LABEL_GAP)}px)`, left: 0, right: 0, textAlign: "center", ...mantraLabelStyle(tangerine) }}>Great job ✓</div>
               <button onClick={complete} style={btnStyle(true)}>Complete</button>
             </div>
           )}
-          {phase === "shrinking" && (
+          {(phase === "shrinking" || (library && phase === "closing" && chosen && origin === "pick" && ov && ov.chrome && ov.chrome.fade === "in" && fromReveal.current)) && (
             <div style={{ position: "absolute", top: `calc(${centerY} - ${Math.round(textH / 2 + MANTRA_LABEL_GAP)}px)`, left: 0, right: 0, textAlign: "center", ...mantraLabelStyle(tangerine), animation: "mantraFadeOut .2s ease forwards" }}>Great job ✓</div>
           )}
         </div>,
         document.body
+      );
+
+      // ── Library page (profile → Mantras) ──
+      if (library && showPick) return (
+        <>
+          <div style={{ opacity: phase === "growing" ? 0 : 1, transition: "opacity .28s ease", paddingBottom: 40 }}>
+            <button style={{ ...s.backBtn, color: shale }} onClick={onBack}>← back</button>
+            <div style={{ textAlign: "center", marginTop: 12, ...mantraLabelStyle(shale) }}>Your mantras</div>
+            <p style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 14, lineHeight: "24px", color: cream, textAlign: "center", margin: "16px 0 54px" }}>Swipe to scroll through your mantras.</p>
+            {deck.list.length > 0 ? (
+              <MantraDeck items={deck.list} index={index} setIndex={setIndex} height={deckH} frontRef={frontRef} cardInfo={cardInfo}
+                goRef={goRef} onTouched={freeze} locked={phase !== "pick"} library onPractice={() => growFromPick()} />
+            ) : (
+              <p style={{ fontFamily: "'Lora', Georgia, serif", fontStyle: "italic", fontSize: 16, color: sage, textAlign: "center", margin: "60px 0" }}>Add a few mantras to get started.</p>
+            )}
+            {deck.list.length > 1 && (
+              <div style={{ display: "flex", justifyContent: "center", gap: 24, marginTop: 36 }}>
+                {[["‹", 1], ["›", -1]].map(([g, d]) => (
+                  <button key={g} onClick={() => goRef.current && goRef.current(d)} aria-label={d === 1 ? "Previous mantra" : "Next mantra"}
+                    style={{ width: 48, height: 48, borderRadius: 24, border: `1px solid ${sage}`, background: "transparent", color: sage, fontFamily: "'DM Mono', monospace", fontSize: 16, cursor: "pointer" }}>{g}</button>
+                ))}
+              </div>
+            )}
+            <div style={{ textAlign: "center", marginTop: 52 }}>
+              <button onClick={onEditSet} style={{ background: "none", border: "none", fontFamily: "'DM Mono', monospace", fontSize: 12, color: sage, cursor: "pointer" }}>Edit my mantras</button>
+            </div>
+          </div>
+          {overlay}
+        </>
       );
 
       // ── Pick ──
@@ -3781,6 +3868,21 @@
 
       // ── Full-screen phases: only the overlay is visible ──
       return <div style={{ minHeight: "100dvh" }}>{overlay}</div>;
+    }
+
+    // ─── Profile → Mantras: your set as a deck, practice any of them ─────
+    function MantraLibraryView({ items, practicedFor, onBack, onSaveSet, onSuggest, onPracticed }) {
+      const { useState: useS } = React;
+      const [editing, setEditing] = useS(false);
+      if (editing) return (
+        <EditMantrasView items={items || []} practicedFor={practicedFor} onBack={() => setEditing(false)} onSave={onSaveSet} onSuggest={onSuggest} />
+      );
+      return (
+        <Shell key="mantra-library" background={ink}>
+          <MantraStepView library items={items || []} practicedFor={practicedFor} onBack={onBack}
+            onEditSet={() => setEditing(true)} onPracticed={onPracticed} />
+        </Shell>
+      );
     }
 
     // ─── Edit the personal set ───────────────────────────────────────────
