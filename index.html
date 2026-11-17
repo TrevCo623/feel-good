@@ -3520,8 +3520,13 @@
 
     // The scrolling "lyrics" — 5 passes, the active one lights up letter by
     // letter. Tap to pause.
-    function MantraRun({ text, reps, wordMs, centerY, textH = 84, vpH = 844, firstLabel, onFinish }) {
-      const { useState: useS, useEffect: useE, useMemo: useM } = React;
+    // Repeats sit in a normal column with ONE fixed gap between them, so the
+    // space from the end of one mantra to the start of the next is the same
+    // however many lines it wraps to. The column slides so the active repeat
+    // is centred; the round label sits in the gap just above it.
+    const MANTRA_REPEAT_GAP = 48;
+    function MantraRun({ text, reps, wordMs, firstLabel, onFinish }) {
+      const { useState: useS, useEffect: useE, useMemo: useM, useRef: useR, useLayoutEffect: useLE } = React;
       const tl = useM(() => mantraTimeline(text, wordMs), [text, wordMs]);
       const LEAD = 450, GAP = 550, repDur = tl.total + GAP;
       const [paused, setPaused] = useS(false);
@@ -3530,33 +3535,56 @@
       const end = LEAD + reps * repDur - GAP + 250;
       useE(() => { if (!finishing && e >= end) { setFinishing(true); setTimeout(onFinish, 650); } }, [e]);
 
+      // Measure the real layout: each repeat's top + height, and the screen.
+      const boxRef = useR(null), colRef = useR(null);
+      const [geo, setGeo] = useS(null);
+      useLE(() => {
+        const measure = () => {
+          const col = colRef.current, box = boxRef.current; if (!col || !box) return;
+          const kids = [...col.children];
+          setGeo({ tops: kids.map(k => k.offsetTop), hs: kids.map(k => k.offsetHeight), boxH: box.clientHeight });
+        };
+        measure();
+        const ro = window.ResizeObserver ? new ResizeObserver(measure) : null;
+        if (ro) { ro.observe(colRef.current); ro.observe(boxRef.current); }
+        if (document.fonts && document.fonts.ready) document.fonts.ready.then(measure);
+        window.addEventListener("resize", measure);
+        const t = setTimeout(measure, 300);
+        return () => { if (ro) ro.disconnect(); window.removeEventListener("resize", measure); clearTimeout(t); };
+      }, [text]);
+
       const cur = Math.max(0, Math.min(reps - 1, Math.floor((e - LEAD) / repDur)));
       const local = e - LEAD - cur * repDur;
       const wordIdx = tl.wordStarts.filter(s0 => s0 <= local).length;
       const chars = [...text];
       const OP = { "-2": 0.1, "-1": 0.1, "0": 1, "1": 0.5, "2": 0.25 };
+
+      const ready = !!geo;
+      const centerPx = geo ? geo.boxH * 0.423 : 0;
+      const ty = geo ? centerPx - (geo.tops[cur] + geo.hs[cur] / 2) : 0;
+      const labelTop = geo ? ty + geo.tops[cur] - MANTRA_REPEAT_GAP / 2 - 7 : 0;
+      const circleTop = geo ? geo.boxH - 125 - 16 : 9999;
+
       return (
-        <div style={{ position: "absolute", inset: 0 }} onClick={() => !finishing && setPaused(p => !p)}>
-          <div key={cur} style={{ position: "absolute", top: `calc(${centerY} - ${Math.round(textH / 2 + MANTRA_LABEL_GAP)}px)`, left: 0, right: 0, textAlign: "center", ...mantraLabelStyle(tangerine),
-            animation: "fadeIn .4s ease", opacity: finishing ? 0 : 1, transition: "opacity .4s" }}>{cur === 0 && firstLabel ? firstLabel : mantraRepLabel(cur, reps)}</div>
-          {Array.from({ length: reps }).map((_, i) => {
-            const d = i - cur;
-            // Lines above the active one also clear the label; lines below
-            // only show if they'd stay clear of the circle at the bottom.
-            const step = textH + MANTRA_LINE_GAP;
-            const offset = d * step - (d < 0 ? MANTRA_LABEL_GAP : 0);
-            const bottomPx = vpH * 0.423 + offset + textH / 2;
-            const fits = d <= 0 || bottomPx < vpH - 125 - 20;
-            const op = finishing ? (d === 0 ? 1 : 0) : (fits ? (OP[d] ?? 0) : 0);
-            return (
-              <div key={i} style={{ position: "absolute", top: centerY, left: 0, right: 0, display: "flex", justifyContent: "center",
-                transform: `translateY(calc(-50% + ${offset}px))`, opacity: op, transition: `transform .6s ${MANTRA_EASE}, opacity .6s ${MANTRA_EASE}` }}>
-                <MantraText color={sage} text={d !== 0 ? text : chars.map((c, ci) => (
-                  <span key={ci} style={{ color: finishing ? "#fff" : (tl.times[ci] <= local ? cream : sage), transition: "color .14s linear" }}>{c}</span>
-                ))} />
-              </div>
-            );
-          })}
+        <div ref={boxRef} style={{ position: "absolute", inset: 0, overflow: "hidden" }} onClick={() => !finishing && setPaused(p => !p)}>
+          <div key={cur} style={{ position: "absolute", top: labelTop, left: 0, right: 0, textAlign: "center", ...mantraLabelStyle(tangerine),
+            animation: "fadeIn .4s ease", opacity: finishing || !ready ? 0 : 1, transition: "opacity .4s" }}>{cur === 0 && firstLabel ? firstLabel : mantraRepLabel(cur, reps)}</div>
+          <div ref={colRef} style={{ position: "absolute", top: 0, left: 0, right: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: MANTRA_REPEAT_GAP,
+            transform: `translateY(${ty}px)`, transition: ready ? `transform .6s ${MANTRA_EASE}` : "none" }}>
+            {Array.from({ length: reps }).map((_, i) => {
+              const d = i - cur;
+              // repeats below the active one only show if they stay clear of the circle
+              const fits = d <= 0 || !geo || (ty + geo.tops[i] + geo.hs[i]) < circleTop;
+              const op = !ready ? 0 : finishing ? (d === 0 ? 1 : 0) : (fits ? (OP[d] ?? 0) : 0);
+              return (
+                <div key={i} style={{ opacity: op, transition: `opacity .6s ${MANTRA_EASE}` }}>
+                  <MantraText color={sage} text={d !== 0 ? text : chars.map((c, ci) => (
+                    <span key={ci} style={{ color: finishing ? "#fff" : (tl.times[ci] <= local ? cream : sage), transition: "color .14s linear" }}>{c}</span>
+                  ))} />
+                </div>
+              );
+            })}
+          </div>
           <div style={{ position: "absolute", bottom: "calc(55px + env(safe-area-inset-bottom))", left: "50%", marginLeft: -35, width: 70, height: 70, opacity: finishing ? 0 : 1, transition: "opacity .4s" }}>
             <div key={cur + "-" + wordIdx} style={{ width: 70, height: 70, borderRadius: 35, background: rust, boxShadow: "0 0 40px rgba(196,120,58,0.35)", animation: "mantraTick .32s ease" }} />
           </div>
@@ -3734,16 +3762,13 @@
               </div>
             );
           })()}
-          {chosen && (
-            <div aria-hidden="true" style={{ position: "absolute", top: 0, left: 0, right: 0, display: "flex", justifyContent: "center", visibility: "hidden", pointerEvents: "none" }}>
-              <div ref={measureRef}><MantraText text={chosen.text} size={30} /></div>
-            </div>
-          )}
           {fl && (
             <div style={{ position: "absolute", top: fl.y, left: 0, right: 0, display: "flex", justifyContent: "center", transform: "translateY(-50%)", pointerEvents: "none",
               transition: fl.anim ? `top ${MANTRA_GROW_MS}ms ${MANTRA_EASE}` : "none" }}>
-              <MantraText text={chosen ? chosen.text : ""} size={fl.size}
-                style={{ transition: fl.anim ? `font-size ${MANTRA_GROW_MS}ms ${MANTRA_EASE}, line-height ${MANTRA_GROW_MS}ms ${MANTRA_EASE}` : "none" }} />
+              <div ref={measureRef}>
+                <MantraText text={chosen ? chosen.text : ""} size={fl.size}
+                  style={{ transition: fl.anim ? `font-size ${MANTRA_GROW_MS}ms ${MANTRA_EASE}, line-height ${MANTRA_GROW_MS}ms ${MANTRA_EASE}` : "none" }} />
+              </div>
             </div>
           )}
           {phase === "intro" && (
@@ -3756,7 +3781,7 @@
               <button onClick={begin} style={btnStyle(true)}>Begin</button>
             </div>
           )}
-          {phase === "run" && chosen && <MantraRun key={runKey} text={chosen.text} reps={MANTRA_REPS} wordMs={MANTRA_WORD_MS} centerY={centerY} textH={textH} vpH={vp.h} firstLabel={firstLabel} onFinish={finishRun} />}
+          {phase === "run" && chosen && <MantraRun key={runKey} text={chosen.text} reps={MANTRA_REPS} wordMs={MANTRA_WORD_MS} firstLabel={firstLabel} onFinish={finishRun} />}
           {phase === "reveal" && (
             <div style={{ position: "absolute", inset: 0, animation: "mantraFadeIn .5s ease both" }}>
               <div style={{ position: "absolute", top: `calc(${centerY} - ${Math.round(textH / 2 + MANTRA_LABEL_GAP)}px)`, left: 0, right: 0, textAlign: "center", ...mantraLabelStyle(tangerine) }}>Great job ✓</div>
