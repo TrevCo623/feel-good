@@ -2078,15 +2078,14 @@
           const tabStyle = (active) => ({
             background: "none", border: "none", fontFamily: "'DM Mono', monospace", fontSize: 11,
             color: active ? ink : moss, letterSpacing: "0.06em", textTransform: "uppercase",
-            padding: "0 0 10px", cursor: "pointer",
-            borderBottom: active ? `2px solid ${ink}` : "2px solid transparent",
+            padding: 0, cursor: "pointer",
           });
 
           return (
             <Shell key="your-journal">
               <button style={s.backBtn} onClick={goBackView}>← back</button>
               <h2 style={s.pageTitle}>Your Journal</h2>
-              <div style={{ display: "flex", gap: 24, marginBottom: 28, borderBottom: `1px solid rgba(44,59,42,0.1)` }}>
+              <div style={{ display: "flex", gap: 32, marginBottom: 32 }}>
                 <button style={tabStyle(tab === "entries")} onClick={() => setTab("entries")}>Entries</button>
                 <button style={tabStyle(tab === "prompts")} onClick={() => setTab("prompts")}>Prompts</button>
               </div>
@@ -2095,16 +2094,17 @@
                 <>
                   <input type="text" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search by date or keyword…"
                     style={{ width: "100%", background: bone, border: "none", borderRadius: 999, padding: "10px 18px", fontFamily: "'DM Mono', monospace", fontSize: 12, color: ink, letterSpacing: "0.03em", outline: "none", marginBottom: 20 }} />
-                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                     {journals.length === 0 && <p style={s.dimMono}>No journal entries yet.</p>}
                     {journals.length > 0 && filteredJournals.length === 0 && <p style={s.dimMono}>No entries match your search.</p>}
                     {filteredJournals.map((j, i) => (
-                      <div key={j.dateKey || i} style={{ ...s.historyCard, background: bone }}>
-                        <div style={s.historyMeta}>
-                          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: moss, letterSpacing: "0.06em", textTransform: "uppercase" }}>{j.fullDate}</span>
-                        </div>
-                        {j.prompt && <><p style={s.historyPromptInk}>"{j.prompt}"</p><div style={{ borderTop: "1px solid rgba(44,59,42,0.12)", margin: "10px 0" }} /></>}
-                        <p style={{ ...s.historyText, color: ink }}>{j.text}</p>
+                      <div key={j.dateKey || i} style={{ background: moss, borderRadius: 16, padding: "18px 22px 24px" }}>
+                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: shale, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 9 }}>{j.fullDate}</div>
+                        {j.prompt && <>
+                          <p style={{ fontFamily: "'Lora', Georgia, serif", fontStyle: "italic", fontSize: 16, lineHeight: "26px", color: cream, margin: 0 }}>"{j.prompt}"</p>
+                          <div style={{ height: 1, background: sage, margin: "14px 0 12px" }} />
+                        </>}
+                        <p style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 14, lineHeight: "24px", color: cream, margin: 0, whiteSpace: "pre-wrap" }}>{j.text}</p>
                       </div>
                     ))}
                   </div>
@@ -3317,7 +3317,7 @@
     const MANTRA_WORD_MS = 480; // "Calm" pace
     const MANTRA_REPS = 5;
     const MANTRA_DEEP = "#485942"; // second card in the stack (Figma)
-    const MANTRA_LIB_COLORS = ["#6B7866", "#485942", "#32452B"]; // profile → Mantras deck (Figma 218:1931) — literal: the colour consts are defined further down
+    const MANTRA_LIB_COLORS = ["#2C3B2A", "#485942", "#A0AE9C"]; // profile → Mantras deck (Figma 218:1931) — literal: the colour consts are defined further down
     const normMantra = (t) => String(t || '').trim().toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
 
     // Seed the personal set the first time: hearted mantras first, then
@@ -3799,14 +3799,14 @@
       if (library && showPick) return (
         <>
           <div style={{ opacity: phase === "growing" ? 0 : 1, transition: "opacity .28s ease", paddingBottom: 40 }}>
-            <button style={{ ...s.backBtn, color: shale }} onClick={onBack}>← back</button>
-            <div style={{ textAlign: "center", marginTop: 12, ...mantraLabelStyle(shale) }}>Your mantras</div>
-            <p style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 14, lineHeight: "24px", color: cream, textAlign: "center", margin: "16px 0 54px" }}>Swipe to scroll through your mantras.</p>
+            <button style={{ ...s.backBtn, color: moss }} onClick={onBack}>← back</button>
+            <div style={{ textAlign: "center", marginTop: 12, ...mantraLabelStyle(moss) }}>Your mantras</div>
+            <p style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 14, lineHeight: "24px", color: ink, textAlign: "center", margin: "16px 0 54px" }}>Swipe to scroll through your mantras.</p>
             {deck.list.length > 0 ? (
               <MantraDeck items={deck.list} index={index} setIndex={setIndex} height={deckH} frontRef={frontRef} cardInfo={cardInfo}
                 goRef={goRef} onTouched={freeze} locked={phase !== "pick"} library onPractice={() => growFromPick()} />
             ) : (
-              <p style={{ fontFamily: "'Lora', Georgia, serif", fontStyle: "italic", fontSize: 16, color: sage, textAlign: "center", margin: "60px 0" }}>Add a few mantras to get started.</p>
+              <p style={{ fontFamily: "'Lora', Georgia, serif", fontStyle: "italic", fontSize: 16, color: moss, textAlign: "center", margin: "60px 0" }}>Add a few mantras to get started.</p>
             )}
             {deck.list.length > 1 && (
               <div style={{ display: "flex", justifyContent: "center", gap: 24, marginTop: 36 }}>
@@ -3817,7 +3817,7 @@
               </div>
             )}
             <div style={{ textAlign: "center", marginTop: 52 }}>
-              <button onClick={onEditSet} style={{ background: "none", border: "none", fontFamily: "'DM Mono', monospace", fontSize: 12, color: sage, cursor: "pointer" }}>Edit my mantras</button>
+              <button onClick={onEditSet} style={{ background: "none", border: "none", fontFamily: "'DM Mono', monospace", fontSize: 12, color: moss, cursor: "pointer" }}>Edit my mantras</button>
             </div>
           </div>
           {overlay}
@@ -3903,7 +3903,7 @@
         <EditMantrasView items={items || []} practicedFor={practicedFor} onBack={() => setEditing(false)} onSave={onSaveSet} onSuggest={onSuggest} />
       );
       return (
-        <Shell key="mantra-library" background={ink}>
+        <Shell key="mantra-library">
           <MantraStepView library items={items || []} practicedFor={practicedFor} onBack={onBack}
             onEditSet={() => setEditing(true)} onPracticed={onPracticed} />
         </Shell>
