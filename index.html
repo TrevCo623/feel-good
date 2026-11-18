@@ -770,7 +770,7 @@
           {step === 0 && (
             <div style={{ textAlign: "center", paddingTop: 32 }}>
               <img src="assets/logo.svg" alt="Feel Good" style={{ width: 56, height: "auto", marginBottom: 24 }} />
-              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: moss, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 20 }}>Update your profile</div>
+              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: moss, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 20 }}>Update your profile</div>
               <h1 style={{ ...titleStyle, fontSize: 30, marginBottom: 16 }}>Let's check in on what we know about you.</h1>
               <p style={{ ...subStyle, fontStyle: "italic", marginBottom: 32 }}>Six quick questions. Your current answers are already filled in — change as much or as little as you like.</p>
               <button style={primary} onClick={() => setStep(1)}>Let's begin</button>
@@ -779,7 +779,7 @@
 
           {q && (
             <div>
-              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 14 }}>{step} of {total}</div>
+              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 14 }}>{step} of {total}</div>
               <h2 style={titleStyle}>{q.title}</h2>
               <p style={subStyle}>{q.sub}</p>
               {q.type === "multi" ? (
@@ -819,7 +819,7 @@
 
           {step === total + 1 && (
             <div style={{ textAlign: "center", paddingTop: 40 }}>
-              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: moss, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 20 }}>All set</div>
+              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: moss, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 20 }}>All set</div>
               <h1 style={{ ...titleStyle, fontSize: 30, marginBottom: 16 }}>We'll use this to shape<br />what you see, starting now.</h1>
               <p style={{ ...subStyle, fontStyle: "italic", marginBottom: 40 }}>You can update this any time from your profile.</p>
               <button style={primary} disabled={finishing} onClick={finish}>{finishing ? "Saving…" : "Back to my profile"}</button>
@@ -832,7 +832,7 @@
     function CommitmentCard({ commitment, style }) {
       return (
         <div style={{ background: bone, borderRadius: 16, padding: 20, color: ink, textAlign: "center", display: "flex", flexDirection: "column", gap: 14, ...style }}>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, letterSpacing: "1px", textTransform: "uppercase" }}>Commitment</div>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase" }}>Commitment</div>
           <p style={{ fontFamily: "'Lora', Georgia, serif", fontStyle: "italic", fontSize: 18, lineHeight: "24px", margin: 0 }}>{commitment.text}</p>
           {commitment.from && <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, letterSpacing: "1px" }}>from {commitment.from} exercise</div>}
         </div>
@@ -874,7 +874,7 @@
         setDone({ commitment, takeaway: tIdx >= 0 ? answers[tIdx].trim() : null });
       }
 
-      const eyebrow = <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 14 }}>{ex.title}</div>;
+      const eyebrow = <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 14 }}>{ex.title}</div>;
       const primaryBtn = (label, onClick, enabled = true) => (
         <button onClick={onClick} disabled={!enabled}
           style={{ width: "100%", background: ink, color: cream, border: "none", borderRadius: 14, padding: "16px 0", fontFamily: "'DM Mono', monospace", fontSize: 13, letterSpacing: "0.05em", cursor: enabled ? "pointer" : "default", opacity: enabled ? 1 : 0.4, transition: "opacity 0.2s", marginTop: 8 }}>
@@ -895,7 +895,7 @@
             {eyebrow}
             <h2 style={{ ...s.pageTitle, marginBottom: 20 }}>Done</h2>
             <div style={{ background: ink, borderRadius: 16, padding: "24px 20px", marginBottom: 12 }}>
-              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: "rgba(255,255,255,0.45)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>{highlight.label}</div>
+              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: "rgba(255,255,255,0.45)", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>{highlight.label}</div>
               <p style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 20, lineHeight: 1.5, color: "rgba(255,255,255,0.92)", fontStyle: "italic", margin: 0 }}>{highlight.text}</p>
             </div>
             <p style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: moss, letterSpacing: "0.04em", margin: "0 0 28px" }}>{highlight.note}</p>
@@ -1059,6 +1059,7 @@
       const [insightLoading, setInsightLoading] = useState(false);
       const [insightDismissing, setInsightDismissing] = useState(false);
       const [insightJournalQueued, setInsightJournalQueued] = useState(false);
+      const [insightPromptDismissed, setInsightPromptDismissed] = useState(null); // text of the "Something to think about" prompt the user dismissed
       const [customPrompts, setCustomPrompts] = useState([]);
       const [totalMoodEntries, setTotalMoodEntries] = useState(0);
       const [activeChartDay, setActiveChartDay] = useState(null);
@@ -1201,6 +1202,8 @@
         // Check if a journal prompt was queued from an insight (for tomorrow)
         const tomorrowD = new Date(); tomorrowD.setDate(tomorrowD.getDate() + 1);
         const tomorrowK = tomorrowD.toISOString().split('T')[0];
+        const dismissedP = await storageGet('settings:insight_prompt_dismissed');
+        if (dismissedP?.prompt) setInsightPromptDismissed(dismissedP.prompt);
         const queued = await storageGet('settings:insight_journal_queued');
         if (queued?.forDate === tomorrowK) setInsightJournalQueued(true);
 
@@ -2030,7 +2033,7 @@
             <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
               {entryDays.map((day, i) => (
                 <div key={day.key} style={{ paddingBottom: 20, marginBottom: 20, borderBottom: i < entryDays.length - 1 ? `1px solid rgba(44,59,42,0.08)` : "none" }}>
-                  <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: moss, marginBottom: 8 }}>{day.fullDate}</div>
+                  <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: moss, marginBottom: 8 }}>{day.fullDate}</div>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <span style={{ fontSize: 24 }}>{day.mood ? day.mood.map(m => m.emoji).join(" ") : "—"}</span>
                     <button
@@ -2078,7 +2081,7 @@
 
           const tabStyle = (active) => ({
             background: "none", border: "none", fontFamily: "'DM Mono', monospace", fontSize: 11,
-            color: active ? ink : moss, letterSpacing: "0.06em", textTransform: "uppercase",
+            color: active ? ink : moss, letterSpacing: "0.12em", textTransform: "uppercase",
             padding: 0, cursor: "pointer",
           });
 
@@ -2235,7 +2238,7 @@
                     {day.mood.map(m => (
                       <div key={m.label} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
                         <span style={{ fontSize: 38 }}>{m.emoji}</span>
-                        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: moss, letterSpacing: "0.06em", textTransform: "uppercase" }}>{m.label}</span>
+                        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: moss, letterSpacing: "0.12em", textTransform: "uppercase" }}>{m.label}</span>
                       </div>
                     ))}
                   </div>
@@ -2612,7 +2615,7 @@
             const dow = new Date(displayDay.key + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long' });
             const dateStr = displayDayIsToday ? getDateDisplay() : (displayDay.fullDate || displayDay.key);
             return (
-              <div style={{ textAlign: 'center', fontFamily: "'DM Mono', monospace", fontSize: 11, letterSpacing: '0.08em', color: moss, textTransform: 'uppercase', marginBottom: 8, ...anim(0.75) }}>
+              <div style={{ textAlign: 'center', fontFamily: "'DM Mono', monospace", fontSize: 11, letterSpacing: "0.12em", color: moss, textTransform: 'uppercase', marginBottom: 8, ...anim(0.75) }}>
                 {dow} · {dateStr}
               </div>
             );
@@ -2682,9 +2685,9 @@
             )}
           </div>
 
-          {/* Trends — flat, no tile, aligned to the content edge (Figma 11:123) */}
+          {/* Trends — "The past few days" + "Something to think about", in a Bone tile */}
           {(insight || insightLoading || insightDismissing) && (
-            <div style={{ marginBottom: 32, ...anim(0.42) }}>
+            <div style={{ background: bone, borderRadius: 16, padding: 20, marginBottom: 32, ...anim(0.42) }}>
               {insightLoading && !insight
                 ? <>
                     <p style={{ fontFamily: "'Lora', serif", fontSize: 18, fontStyle: 'italic', color: 'rgba(44,59,42,0.25)', lineHeight: '24px', margin: '0 0 16px' }}>The past few days</p>
@@ -2696,21 +2699,24 @@
                     </p>
                     <p style={{ fontFamily: "'Lora', serif", fontSize: 16, color: ink, lineHeight: '26px', margin: 0 }}>{withEmphasis(insight)}</p>
                     {insightJournalQueued ? (
-                      <p style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: moss, letterSpacing: '0.04em', textTransform: 'uppercase', margin: '24px 0 0' }}>We'll explore this tomorrow</p>
-                    ) : (<>
+                      <p style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: moss, letterSpacing: "0.12em", textTransform: 'uppercase', margin: '24px 0 0' }}>We'll explore this tomorrow</p>
+                    ) : insightPromptDismissed && insightPromptDismissed === (insightJournalPrompt || insight) ? null : (<>
                     {insightJournalPrompt && (
                       <>
-                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: moss, textTransform: 'uppercase', margin: '28px 0 12px' }}>Something to think about</div>
-                        <p style={{ fontFamily: "'Lora', serif", fontSize: 18, fontStyle: 'italic', color: ink, lineHeight: 1.5, margin: 0 }}>{withEmphasis(insightJournalPrompt)}</p>
+                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: moss, letterSpacing: "0.12em", textTransform: 'uppercase', margin: '28px 0 12px' }}>Something to think about</div>
+                        <p style={{ fontFamily: "'Lora', serif", fontSize: 16, fontStyle: 'italic', color: ink, lineHeight: '26px', margin: 0 }}>{withEmphasis(insightJournalPrompt)}</p>
                       </>
                     )}
                     {(() => {
                       const btn = { flex: 1, background: 'none', border: `1px solid ${moss}`, borderRadius: 999, padding: '12px 0', fontFamily: "'DM Mono', monospace", fontSize: 11, color: moss, letterSpacing: '0.05em', cursor: 'pointer' };
                       return (
                         <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
-                          <button onClick={dismissInsight} disabled={insightDismissing} style={{ ...btn, cursor: insightDismissing ? 'default' : 'pointer', opacity: insightDismissing ? 0.4 : 1 }}>
-                            {insightDismissing ? 'Refreshing…' : 'Refresh'}
-                          </button>
+                          <button style={btn} onClick={async () => {
+                                // Dismiss just hides "Something to think about" (and these buttons) for this prompt.
+                                const key = insightJournalPrompt || insight;
+                                setInsightPromptDismissed(key);
+                                await storageSet('settings:insight_prompt_dismissed', { prompt: key, at: new Date().toISOString() });
+                              }}>Dismiss</button>
                           {<button style={btn} onClick={async () => {
                                 const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
                                 const tKey = tomorrow.toISOString().split('T')[0];
@@ -2735,10 +2741,9 @@
             if (!affirmation && !metrics && !commitment) return null;
             return (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 32, ...anim(0.46) }}>
-                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: moss, textTransform: 'uppercase' }}>Today's check-in</div>
                 {affirmation && (
             <div style={{ background: ink, borderRadius: 16, padding: '20px 22px 22px', textAlign: 'center' }}>
-              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: sage, textTransform: 'uppercase', marginBottom: 16 }}>Mantra</div>
+              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: sage, letterSpacing: "0.12em", textTransform: 'uppercase', marginBottom: 16 }}>Mantra</div>
               <p style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 20, fontStyle: 'italic', color: 'rgba(255,255,255,0.92)', lineHeight: 1.6, margin: '0 0 24px' }}>
                 {affirmation.text}
               </p>
@@ -3009,14 +3014,14 @@
         return (
           <Shell key="thought-check-done">
             <button style={s.backBtn} onClick={goBack}>← back</button>
-            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 14 }}>Thought Check</div>
+            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 14 }}>Thought Check</div>
             <h2 style={{ ...s.pageTitle, marginBottom: 20 }}>Reframed</h2>
             <div style={{ background: bone, borderRadius: 14, padding: "16px 18px", marginBottom: 16 }}>
-              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>The thought</div>
+              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>The thought</div>
               <div style={{ fontFamily: "'Lora', serif", fontSize: 15, color: ink, lineHeight: 1.5 }}>{answers[0]}</div>
             </div>
             <div style={{ background: ink, borderRadius: 16, padding: "24px 20px", marginBottom: 32 }}>
-              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: "rgba(255,255,255,0.4)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>Reframed</div>
+              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: "rgba(255,255,255,0.4)", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>Reframed</div>
               <p style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 18, lineHeight: 1.5, color: "rgba(255,255,255,0.92)", fontStyle: "italic", margin: 0 }}>{answers[3]}</p>
             </div>
             <button
@@ -3031,7 +3036,7 @@
       return (
         <Shell key="thought-check">
           <button style={s.backBtn} onClick={goBack}>← back</button>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 24 }}>Thought Check</div>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 24 }}>Thought Check</div>
           {QUESTIONS.map((q, i) => (
             <div key={i} style={{ marginBottom: 28 }}>
               <h2 style={{ ...s.pageTitle, fontSize: 20, marginBottom: 8 }}>{q.verb}</h2>
@@ -3099,7 +3104,7 @@
           </div>
           <div style={{ display: "flex", marginTop: 8 }}>
             {MOOD_SCORE_LABELS.map((label, i) => (
-              <span key={label} style={{ flex: 1, textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 9, letterSpacing: "0.3px", textTransform: "uppercase", color: i === activeIndex ? ink : moss, fontWeight: i === activeIndex ? 500 : 400 }}>
+              <span key={label} style={{ flex: 1, textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: i === activeIndex ? ink : moss, fontWeight: i === activeIndex ? 500 : 400 }}>
                 {label}
               </span>
             ))}
@@ -3127,7 +3132,7 @@
       return (
         <Shell key="add-mood">
           <button style={s.backBtn} onClick={onBack}>← back</button>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.14em", textTransform: "uppercase", textAlign: "center", marginBottom: 24 }}>Your New Mood</div>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.12em", textTransform: "uppercase", textAlign: "center", marginBottom: 24 }}>Your New Mood</div>
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 36 }}>
             <div style={{ width: 120, height: 120, background: bone, borderRadius: 20, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
               <span style={{ fontSize: 42, lineHeight: 1 }}>
@@ -3174,7 +3179,7 @@
       return (
         <Shell key="add-prompt">
           <button style={s.backBtn} onClick={onBack}>← back</button>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.14em", textTransform: "uppercase", textAlign: "center", marginBottom: 14 }}>New Prompt</div>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.12em", textTransform: "uppercase", textAlign: "center", marginBottom: 14 }}>New Prompt</div>
           <h2 style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 26, fontWeight: 400, fontStyle: "italic", color: ink, lineHeight: 1.3, margin: "0 0 32px", textAlign: "center" }}>What would you like to explore?</h2>
           <textarea ref={textRef} value={text} onChange={e => setText(e.target.value)} placeholder="Write your prompt here..."
             style={{ width: "100%", background: bone, border: "none", borderRadius: 14, padding: "18px 20px", fontFamily: "'Lora', Georgia, serif", fontStyle: "italic", fontSize: 16, color: text ? ink : moss, lineHeight: 1.7, minHeight: 140, outline: "none", resize: "none", display: "block", marginBottom: 24 }} />
@@ -3199,11 +3204,11 @@
       return (
         <Shell key="choose-prompt">
           <button style={s.backBtn} onClick={onBack}>← back</button>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 10 }}>Current Prompt</div>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>Current Prompt</div>
           <div style={{ background: sage, borderRadius: 14, padding: "18px 20px", marginBottom: 32 }}>
             <span style={{ fontFamily: "'Lora', Georgia, serif", fontStyle: "italic", fontSize: 16, color: ink, lineHeight: 1.6 }}>{current}</span>
           </div>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 14 }}>Choose a new prompt</div>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 14 }}>Choose a new prompt</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {others.map((p, i) => (
               <button key={i} onClick={() => onSelect(p)}
@@ -3226,11 +3231,11 @@
       return (
         <Shell key="choose-affirmation">
           <button style={s.backBtn} onClick={onBack}>← back</button>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 10 }}>Current Mantra</div>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>Current Mantra</div>
           <div style={{ background: sage, borderRadius: 14, padding: "18px 20px", marginBottom: 32 }}>
             <span style={{ fontFamily: "'Lora', Georgia, serif", fontStyle: "italic", fontSize: 16, color: ink, lineHeight: 1.6 }}>{current?.text}</span>
           </div>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 14 }}>Choose a new mantra</div>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 14 }}>Choose a new mantra</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {others.map((a) => (
               <button key={a.idx} onClick={() => onSelect(a.idx)}
@@ -4189,7 +4194,7 @@
       );
 
       const stepLabel = (text) => (
-        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.14em", textTransform: "uppercase", textAlign: "center", marginBottom: 14 }}>{text}</div>
+        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.12em", textTransform: "uppercase", textAlign: "center", marginBottom: 14 }}>{text}</div>
       );
 
       const nextBtn = (opts = {}) => (
@@ -4261,7 +4266,7 @@
           {stepLabel("Your Mood")}
           <h2 style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 26, fontWeight: 400, fontStyle: "italic", color: ink, lineHeight: 1.3, margin: "0 0 56px", textAlign: "center" }}>How are you feeling?</h2>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.08em", textTransform: "uppercase" }}>Select up to 5</span>
+            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.12em", textTransform: "uppercase" }}>Select up to 5</span>
             {entryMoods.length > 0 && <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: moss }}>{entryMoods.length} selected</span>}
           </div>
           {/* 5×5 spectrum: rows = score band, columns = Feeling · Energy · Confidence · Connection · Optimism */}
@@ -4519,7 +4524,7 @@
               <button style={{ background: "none", border: "none", fontFamily: "'DM Mono', monospace", fontSize: 11, color: moss, letterSpacing: "0.05em", padding: 0, cursor: "pointer" }} onClick={() => setActiveEx(null)}>← back</button>
               {makeDots(4 + dotOffset)}
             </div>
-            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.14em", textTransform: "uppercase", textAlign: "center", marginBottom: 14 }}>{activeEx.sub}</div>
+            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.12em", textTransform: "uppercase", textAlign: "center", marginBottom: 14 }}>{activeEx.sub}</div>
             <h2 style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 30, fontWeight: 400, color: ink, margin: "0 0 10px", textAlign: "center" }}>{activeEx.title}</h2>
             <p style={{ fontFamily: "'Lora', serif", fontSize: 15, color: moss, lineHeight: 1.6, margin: "0 0 28px", textAlign: "center" }}>{activeEx.intro}</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 40 }}>
@@ -4550,15 +4555,15 @@
             <button style={{ background: "none", border: "none", fontFamily: "'DM Mono', monospace", fontSize: 11, color: moss, letterSpacing: "0.05em", padding: 0, cursor: "pointer" }} onClick={onBack}>← back</button>
             {makeDots(4 + dotOffset)}
           </div>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.14em", textTransform: "uppercase", textAlign: "center", marginBottom: 14 }}>Your Exercises</div>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.12em", textTransform: "uppercase", textAlign: "center", marginBottom: 14 }}>Your Exercises</div>
           <h2 style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 28, fontWeight: 400, fontStyle: "italic", color: ink, margin: "0 0 28px", textAlign: "center" }}>Find your peace today</h2>
 
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>Suggested for today</div>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>Suggested for today</div>
           <div style={{ marginBottom: 28 }}>
             <ExerciseCard ex={suggestedEx} onClick={() => setActiveEx(suggestedEx)} />
           </div>
 
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>Other exercises</div>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>Other exercises</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 32 }}>
             {otherExercises.map(ex => (
               <ExerciseCard key={ex.id} ex={ex} onClick={() => setActiveEx(ex)} />
@@ -4583,7 +4588,7 @@
           style={{ width: "100%", background: bone, border: "none", borderRadius: 16, padding: "20px 22px", textAlign: "left", cursor: "pointer" }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.1em", textTransform: "uppercase" }}>{ex.sub}</div>
+            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.12em", textTransform: "uppercase" }}>{ex.sub}</div>
             <ExerciseIcon id={ex.id} size={20} color={moss} />
           </div>
           <div style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 20, color: ink, marginBottom: 8 }}>{ex.title}</div>
@@ -5239,7 +5244,7 @@
               <div style={{ textAlign: "center", marginBottom: 28 }}>
                 <h1 style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 30, fontStyle: "italic", fontWeight: 400, color: cream, margin: "0 0 8px" }}>Hello {name}</h1>
                 {firstDate && (
-                  <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: bone, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+                  <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: bone, letterSpacing: "0.12em", textTransform: "uppercase" }}>
                     Feeling good since {firstDate}
                   </div>
                 )}
@@ -5257,7 +5262,7 @@
                     <span style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 100, fontWeight: 400, fontStyle: "italic", color: cream }}>{displayPct}</span>
                     <span style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 36, fontWeight: 400, fontStyle: "italic", color: cream }}>%</span>
                   </div>
-                  <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: bone, letterSpacing: "0.1em", textTransform: "uppercase", textAlign: "center", marginTop: 8, marginBottom: 28 }}>
+                  <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: bone, letterSpacing: "0.12em", textTransform: "uppercase", textAlign: "center", marginTop: 8, marginBottom: 28 }}>
                     Days feeling good
                   </div>
                   {/* Bar row is 20px tall (not the track's own 8px) purely
@@ -5409,7 +5414,7 @@
             const circle = { width: 32, height: 32, flexShrink: 0, borderRadius: 16, border: `1px solid ${sage}`, background: "transparent", color: cream, fontFamily: "'DM Mono', monospace", fontSize: 16, lineHeight: 1, padding: 0, cursor: "pointer" };
             return (
               <div style={{ ...cardStyle, height: 261, boxSizing: "border-box", display: "flex", flexDirection: "column", alignItems: "center", ...cascade(6) }}>
-                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: shale, textTransform: "uppercase", textAlign: "center" }}>Mantras</div>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: shale, letterSpacing: "0.12em", textTransform: "uppercase", textAlign: "center" }}>Mantras</div>
                 {/* Eyebrow and buttons stay put; the mantra sits centred between
                     them and is cut to 3 lines with an ellipsis if it's long. */}
                 <div style={{ flex: 1, minHeight: 0, width: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -6004,7 +6009,7 @@
           {/* ── Active day display ── */}
           {!hideHeader && (
             <div style={{ padding: "4px 20px 16px" }}>
-              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>How you're doing</div>
+              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>How you're doing</div>
               {activeDay && (
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", gap: 12 }}>
                   <span style={{ fontFamily: "'Lora', serif", fontSize: 22, fontStyle: "italic", color: ink, lineHeight: 1.3, textAlign: "left" }}>
@@ -6105,7 +6110,7 @@
                 {points.length > 0 && (
                   <foreignObject x={0} y={SVG_H / 2 - 24} width={hPad} height={48}>
                     <div xmlns="http://www.w3.org/1999/xhtml" style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <div style={{ textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.07em", textTransform: "uppercase", lineHeight: 1.5 }}>
+                      <div style={{ textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.12em", textTransform: "uppercase", lineHeight: 1.5 }}>
                         Your first day<br/>feeling good
                       </div>
                     </div>
@@ -6178,7 +6183,7 @@
         margin: "0 auto",
         padding: "20px 24px 0",
       },
-      dateLine: { fontFamily: "'DM Mono', monospace", fontSize: 11, letterSpacing: "0.08em", color: moss, textTransform: "uppercase", marginBottom: 10 },
+      dateLine: { fontFamily: "'DM Mono', monospace", fontSize: 11, letterSpacing: "0.12em", color: moss, textTransform: "uppercase", marginBottom: 10 },
       headline: { fontSize: 40, fontWeight: 400, fontStyle: "italic", lineHeight: 1.1, color: ink },
       streakBadge: { display: "flex", alignItems: "center", gap: 6, background: bone, borderRadius: 999, padding: "0 12px", height: 28, boxSizing: "border-box" },
       streakFire: { fontSize: 14, display: "flex", alignItems: "center" },
@@ -6192,7 +6197,7 @@
       moodBtnLabel: { fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.02em", width: "100%", textAlign: "center", lineHeight: 1.3 },
       physicalCardRow: { display: "flex", gap: 8, marginBottom: 21 },
       physicalCard: { flex: 1, minWidth: 0, height: 120, background: bone, borderRadius: 10, padding: "14px 8px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 5, boxSizing: "border-box" },
-      physicalCardLabel: { fontFamily: "'DM Mono', monospace", fontSize: 8, color: moss, letterSpacing: "0.08em", textTransform: "uppercase" },
+      physicalCardLabel: { fontFamily: "'DM Mono', monospace", fontSize: 8, color: moss, letterSpacing: "0.12em", textTransform: "uppercase" },
       physicalCardValue: { fontFamily: "'Lora', Georgia, serif", fontSize: 28, fontWeight: 400, color: ink, lineHeight: 1.1 },
       physicalCardSub: { fontFamily: "'DM Mono', monospace", fontSize: 8.5, color: moss, letterSpacing: "0.02em" },
       physicalPill: { fontFamily: "'DM Mono', monospace", fontSize: 9, letterSpacing: "0.04em", borderRadius: 16, padding: "3px 10px", marginTop: 2 },
@@ -6203,7 +6208,7 @@
       journalSavedNote: { fontFamily: "'DM Mono', monospace", fontSize: 11, color: "#8fbc8f", marginTop: 10, letterSpacing: "0.04em" },
       traitGrid: { display: "flex", flexWrap: "wrap", gap: 8 },
       traitPill: { background: ink, color: cream, borderRadius: 999, padding: "5px 14px", fontSize: 12, fontFamily: "'DM Mono', monospace", letterSpacing: "0.04em" },
-      sectionLabel: { fontFamily: "'DM Mono', monospace", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 },
+      sectionLabel: { fontFamily: "'DM Mono', monospace", fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 },
       refreshBtn: { position: "absolute", top: 24, right: 24, background: "transparent", border: "none", color: "rgba(255,255,255,0.45)", fontSize: 15, cursor: "pointer", padding: 0, lineHeight: 1 },
       editLink: { background: "none", border: "none", fontFamily: "'DM Mono', monospace", fontSize: 11, color: moss, letterSpacing: "0.05em", padding: 0, lineHeight: 1, cursor: "pointer" },
       footerLinks: { display: "flex", justifyContent: "center", gap: 32 },
@@ -6219,7 +6224,7 @@
       pageTitle: { fontSize: 28, fontWeight: 400, fontStyle: "italic", marginBottom: 24 },
       historyCard: { background: ink, borderRadius: 12, padding: 18, marginBottom: 14 },
       historyMeta: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
-      historyType: { fontFamily: "'DM Mono', monospace", fontSize: 10, letterSpacing: "0.08em", color: rust, textTransform: "uppercase" },
+      historyType: { fontFamily: "'DM Mono', monospace", fontSize: 10, letterSpacing: "0.12em", color: rust, textTransform: "uppercase" },
       historyPrompt: { fontSize: 17, fontStyle: "italic", color: "rgba(255,255,255,0.9)", marginBottom: 0, lineHeight: 1.5 },
       historyPromptInk: { fontSize: 16, fontStyle: "italic", color: ink, marginBottom: 0, lineHeight: 1.55 },
       historyText: { fontSize: 14, lineHeight: 1.65, color: "rgba(255,255,255,0.8)" },
@@ -6237,7 +6242,7 @@
       swipeHint: { background: "none", border: "none", fontFamily: "'DM Mono', monospace", fontSize: 11, color: moss, letterSpacing: "0.05em", padding: 0, cursor: "pointer" },
       historyTopBtn: { background: "none", border: "none", padding: 0, fontFamily: "'DM Mono', monospace", fontSize: 11, color: moss, letterSpacing: "0.05em", cursor: "pointer", display: "block", textAlign: "left" },
       statCard: { background: bone, borderRadius: 14, padding: "18px 20px" },
-      statLabel: { fontFamily: "'DM Mono', monospace", fontSize: 10, color: moss, letterSpacing: "0.08em", textTransform: "uppercase" },
+      statLabel: { fontFamily: "'DM Mono', monospace", fontSize: 10, color: moss, letterSpacing: "0.12em", textTransform: "uppercase" },
       statBigNum: { fontSize: 36, fontWeight: 400, fontStyle: "italic", color: ink, marginTop: 6, lineHeight: 1, fontFamily: "'Lora', Georgia, serif" },
       statUnit: { fontSize: 16, color: moss },
       statEmpty: { fontFamily: "'DM Mono', monospace", fontSize: 11, color: moss, marginTop: 8, fontStyle: "italic" },
@@ -6266,7 +6271,7 @@
       // ── History calendar
       calendarStrip: { display: "flex", gap: 10, overflowX: "scroll", padding: "0 24px 12px", scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch", marginBottom: 8 },
       calendarDay: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6, background: bone, border: "none", borderRadius: 12, padding: "12px 14px", flexShrink: 0, scrollSnapAlign: "start", cursor: "pointer", minWidth: 60 },
-      calendarDayName: { fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.08em", textTransform: "uppercase" },
+      calendarDayName: { fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.12em", textTransform: "uppercase" },
       calendarEmoji: { fontSize: 22, lineHeight: 1 },
       calendarDate: { fontFamily: "'DM Mono', monospace", fontSize: 11, color: ink },
       historyListRow: { display: "flex", alignItems: "center", gap: 12, background: bone, border: "none", borderRadius: 10, padding: "14px 16px", cursor: "pointer", textAlign: "left", width: "100%" },
