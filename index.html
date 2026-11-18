@@ -2335,7 +2335,8 @@
               // stays continuous.
               setExerciseMoods(moods);
               setExerciseDateKey(entryDay.key);
-              setExerciseDotOffset(hasPhysical ? 1 : 0);
+              // (−1 for other days: their check-in has no Mantra step)
+              setExerciseDotOffset((hasPhysical ? 1 : 0) - (entryDay.key === todayKey ? 0 : 1));
               navigate("daily-exercise");
             }}
           />
@@ -2349,7 +2350,7 @@
             moods={exerciseMoods}
             dateKey={exerciseDateKey}
             dotOffset={exerciseDotOffset}
-            onBack={() => { setResumeStep(exerciseDotOffset ? 5 : 4); goBackView(); }}
+            onBack={() => { setResumeStep(4 + exerciseDotOffset); goBackView(); }}
             onDone={async (exerciseId) => {
               if (exerciseId) {
                 const exKey = `settings:exercises_${exerciseDateKey}`;
@@ -4090,10 +4091,14 @@
       const hasPhysical = ouraConnected === true;
       // "What's behind these feelings?" now lives on Step 1 with the moods,
       // so the Physical step's AI read can use it.
-      const TOTAL = hasPhysical ? 7 : 6;
+      // The Mantra step is only for today's check-in. Adding or editing an
+      // entry for any other day ends at Happy Hour (Next there saves).
+      const isTodayEntry = day.key === getTodayKey();
+      const TOTAL = (hasPhysical ? 7 : 6) - (isTodayEntry ? 0 : 1);
       const journalStep = hasPhysical ? 3 : 2;
       const happyStep = hasPhysical ? 4 : 3;
       const affirmationStep = happyStep + 1;
+      const lastStep = isTodayEntry ? affirmationStep : happyStep;
 
       // Keep resolvedAff in sync with live prop changes (refresh / rate /
       // choose all flow back through the `affirmation` prop).
@@ -4178,7 +4183,7 @@
       // the one-sentence echo of "What's behind it" + Journal shown under the
       // mantra card at the end. Nothing written → no line.
       const [mantraSuggestion, setMantraSuggestion] = useS(null);
-      const mantraReady = step >= happyStep;
+      const mantraReady = isTodayEntry && step >= happyStep;
       const mantraCtx = (() => { const str = [(mantraSet || []).map(m => m.text).join('|'), entryMoods.map(m => m.label).join(','), note.trim(), journalText.trim()].join('§'); let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0; return (h >>> 0).toString(36); })();
       useE(() => {
         if (!mantraReady || !mantraSet || !mantraSet.length) return;
@@ -4266,7 +4271,7 @@
 
       const nextBtn = (opts = {}) => (
         <button
-          onClick={opts.onPress || (step < affirmationStep ? () => setStep(prev => prev + 1) : handleSave)}
+          onClick={opts.onPress || (step < lastStep ? () => setStep(prev => prev + 1) : handleSave)}
           disabled={opts.disabled || saving}
           style={{ width: "100%", background: opts.ghost ? "transparent" : ink, color: opts.ghost ? ink : cream, border: opts.ghost ? `1px solid ${ink}` : "none", boxSizing: "border-box", borderRadius: 14, padding: opts.ghost ? "15px 0" : "16px 0", fontFamily: "'DM Mono', monospace", fontSize: 13, letterSpacing: "0.05em", cursor: (opts.disabled || saving) ? "default" : "pointer", marginTop: opts.marginTop ?? 28, marginBottom: 8, opacity: (opts.disabled || saving) ? 0.4 : 1, transition: "opacity 0.2s" }}>
           {opts.label || (saving ? "Saving..." : "Next")}
