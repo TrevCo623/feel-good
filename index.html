@@ -1487,7 +1487,6 @@
           score: d.mood?.length ? Number(scoreOf(d.mood, d.key).toFixed(1)) : null,
           note: (d.journal?.note || '').slice(0, 200),
           journal: (d.journal?.text || '').slice(0, 300),
-          happyHour: (d.happyHour || '').slice(0, 150),
           exercises: (d.exercises || []).map(e => typeof e === 'string' ? e : (e?.id || e?.name || '')).filter(Boolean),
         }));
 
@@ -1782,7 +1781,7 @@
         startDate.setDate(startDate.getDate() - 89);
         const startKey = startDate.toISOString().split("T")[0];
 
-        const [jRows, mRows, aRows, iRows, eRows, nRows, hRows, rRows, cRows] = await Promise.all([
+        const [jRows, mRows, aRows, iRows, eRows, nRows, rRows, cRows] = await Promise.all([
           sbList('journal_entries', 'date_key,body,prompt,saved_at', `date_key=gte.${startKey}`),
           fetch(`${FUNCTIONS_BASE}/moods?select=date_key,emoji,label&date_key=gte.${startKey}`, { headers: { 'Authorization': SB_HEADERS['Authorization'], 'Content-Type': 'application/json' } })
             .then(r => { moodsLoadOkRef.current = r.ok; return r.ok ? r.json() : []; })
@@ -1791,7 +1790,6 @@
           sbList('settings', 'key,value', `key=gte.insight4_&key=lt.insight5_`),
           sbList('settings', 'key,value', `key=gte.exercises_&key=lt.exercises_z`),
           sbList('settings', 'key,value', `key=gte.mood_note_&key=lt.mood_note_z`),
-          sbList('settings', 'key,value', `key=gte.happy_hour_&key=lt.happy_hour_z`),
           sbList('settings', 'key,value', `key=gte.mantra_reflection_&key=lt.mantra_reflection_z`),
           sbList('settings', 'key,value', `key=gte.commitment_&key=lt.commitment_z`),
         ]);
@@ -1820,7 +1818,6 @@
         const aMap = Object.fromEntries(aRows.map(r => [r.date_key, r]));
         const iMap = Object.fromEntries(iRows.map(r => [r.key.replace('insight4_', ''), r.value?.short || r.value?.text || null]));
         const eMap = Object.fromEntries(eRows.map(r => [r.key.replace('exercises_', ''), r.value || []]));
-        const hMap = Object.fromEntries(hRows.map(r => [r.key.replace('happy_hour_', ''), r.value || '']));
         const nMap = Object.fromEntries(nRows.map(r => [r.key.replace('mood_note_', ''), r.value || '']));
         const rMap = Object.fromEntries(rRows.map(r => [r.key.replace('mantra_reflection_', ''), r.value || '']));
         const cMap = Object.fromEntries(cRows.map(r => [r.key.replace('commitment_', ''), r.value?.text ? r.value : null]));
@@ -1851,7 +1848,6 @@
             mood, journal, affirmation,
             insight: iMap[key] || null,
             exercises: eMap[key] || [],
-            happyHour: hMap[key] || '',
             mantraReflection: typeof rMap[key] === 'string' ? rMap[key] : '',
             commitment: cMap[key] || null,
             hasData: !!(mood || journal || affirmation),
@@ -1973,6 +1969,10 @@
           onSaveSet={saveMantraSet} onSuggest={suggestMantra} onPracticed={logMantraPractice} />;
       }
 
+      if (view === "notifications") {
+        return <NotificationsView onBack={goBackView} />;
+      }
+
       if (view === "physical-health") {
         // moodScoreDays is normally computed inside the "profile" branch
         // below (local to that block) — recomputed here from the same
@@ -2048,12 +2048,13 @@
 
       // ─── JOURNAL ENTRIES VIEW ─────────────────────────────────────
       if (view === "journal-entries") {
-        const journals = historyDays.filter(d => d.journal).map(d => ({ ...d.journal, dateKey: d.key, fullDate: d.fullDate }));
+        const journals = historyDays.filter(d => d.journal && ((d.journal.text || '').trim() || (d.journal.note || '').trim())).map(d => ({ ...d.journal, dateKey: d.key, fullDate: d.fullDate, weekday: d.date.toLocaleDateString('en-US', { weekday: 'long' }), mood: d.mood || [] }));
         const YourJournalView = () => {
           const { useState: useS } = React;
           const [tab, setTab] = useS("entries");
           const [query, setQuery] = useS("");
           const [showAddPrompt, setShowAddPrompt] = useS(false);
+          const [openKeys, setOpenKeys] = useS({}); // cards expanded past the 3-line preview
 
           if (showAddPrompt) return (
             <AddPromptView
@@ -2071,7 +2072,7 @@
           const allPrompts = [...customPrompts, ...DAILY_PROMPTS].slice(0, 10);
           const filteredJournals = journals.filter(j => {
             if (!query.trim()) return true;
-            const hay = `${j.text || ''} ${j.prompt || ''} ${j.fullDate || ''} ${j.dateKey || ''}`.toLowerCase();
+            const hay = `${j.text || ''} ${j.note || ''} ${j.prompt || ''} ${j.fullDate || ''} ${j.dateKey || ''}`.toLowerCase();
             return query.toLowerCase().split(/\s+/).filter(w => w.length > 1).some(kw => hay.includes(kw));
           });
 
@@ -2097,16 +2098,43 @@
                   <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                     {journals.length === 0 && <p style={s.dimMono}>No journal entries yet.</p>}
                     {journals.length > 0 && filteredJournals.length === 0 && <p style={s.dimMono}>No entries match your search.</p>}
-                    {filteredJournals.map((j, i) => (
-                      <div key={j.dateKey || i} style={{ background: moss, borderRadius: 16, padding: "18px 22px 24px" }}>
-                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: shale, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 9 }}>{j.fullDate}</div>
-                        {j.prompt && <>
-                          <p style={{ fontFamily: "'Lora', Georgia, serif", fontStyle: "italic", fontSize: 16, lineHeight: "26px", color: cream, margin: 0 }}>"{j.prompt}"</p>
-                          <div style={{ height: 1, background: sage, margin: "14px 0 12px" }} />
-                        </>}
-                        <p style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 14, lineHeight: "24px", color: cream, margin: 0, whiteSpace: "pre-wrap" }}>{j.text}</p>
-                      </div>
-                    ))}
+                    {filteredJournals.map((j, i) => {
+                      const k = j.dateKey || i, open = !!openKeys[k];
+                      const label = { fontFamily: "'DM Mono', monospace", fontSize: 10, color: sage, letterSpacing: "0.12em", textTransform: "uppercase", margin: "0 0 4px" };
+                      const body = { fontFamily: "'Lora', Georgia, serif", fontSize: 14, lineHeight: "24px", color: cream, margin: 0, whiteSpace: "pre-wrap",
+                        ...(open ? {} : { display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }) };
+                      const note = (j.note || "").trim(), text = (j.text || "").trim();
+                      return (
+                        <div key={k} onClick={() => setOpenKeys(o => ({ ...o, [k]: !o[k] }))}
+                          style={{ background: ink, borderRadius: 16, padding: "24px 22px", cursor: "pointer" }}>
+                          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: sage, letterSpacing: "0.12em", textTransform: "uppercase", textAlign: "center" }}>
+                            {j.weekday ? `${j.weekday}, ` : ""}{j.fullDate}
+                          </div>
+                          {j.mood.length > 0 && (
+                            <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: 16, marginTop: 17 }}>
+                              {j.mood.map(m => (
+                                <div key={m.label} style={{ width: 70, textAlign: "center" }}>
+                                  <div style={{ fontSize: 30, lineHeight: "44px" }}>{m.emoji}</div>
+                                  <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: sage }}>{m.label}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {note && (
+                            <div style={{ marginTop: 24 }}>
+                              <p style={label}>What was behind these feelings?</p>
+                              <p style={body}>{note}</p>
+                            </div>
+                          )}
+                          {text && (
+                            <div style={{ marginTop: 24 }}>
+                              <p style={label}>{j.prompt ? `Prompt: ${j.prompt}` : "Journal"}</p>
+                              <p style={body}>{text}</p>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </>
               )}
@@ -2116,14 +2144,14 @@
                   {allPrompts.map((p, i) => {
                     const isCustom = customPrompts.includes(p);
                     return (
-                      <div key={i} style={{ background: bone, borderRadius: 14, padding: "16px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-                        <span style={{ fontFamily: "'Lora', Georgia, serif", fontStyle: "italic", fontSize: 15, color: ink, lineHeight: 1.55, flex: 1 }}>{p}</span>
+                      <div key={i} style={{ background: ink, borderRadius: 14, padding: "16px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                        <span style={{ fontFamily: "'Lora', Georgia, serif", fontStyle: "italic", fontSize: 15, color: cream, lineHeight: 1.55, flex: 1 }}>{p}</span>
                         {isCustom && (
                           <button onClick={async () => {
                             const next = customPrompts.filter(c => c !== p);
                             setCustomPrompts(next);
                             await storageSet('settings:custom_prompts', next);
-                          }} style={{ background: "none", border: "none", color: rust, fontSize: 18, lineHeight: 1, padding: "0 4px", flexShrink: 0, cursor: "pointer" }}>×</button>
+                          }} style={{ background: "none", border: "none", color: sage, fontSize: 18, lineHeight: 1, padding: "0 4px", flexShrink: 0, cursor: "pointer" }}>×</button>
                         )}
                       </div>
                     );
@@ -2259,12 +2287,6 @@
                 </div>
               );
             })()}
-            {day.happyHour && (
-              <div style={{ background: bone, borderRadius: 16, padding: "20px 22px", marginBottom: 14 }}>
-                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>Your Happy Hour</div>
-                <p style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 15, color: ink, lineHeight: 1.7, margin: 0 }}>{day.happyHour}</p>
-              </div>
-            )}
             {day.commitment && <CommitmentCard commitment={day.commitment} style={{ marginBottom: 14 }} />}
             {!day.mood && !day.affirmation && !day.journal && !day.commitment && (
               <p style={{ ...s.dimMono, marginTop: 24 }}>Nothing recorded for this day.</p>
@@ -2292,7 +2314,6 @@
             initialMoods={entryDay.mood || []}
             initialNote={entryDay.journal?.note || ""}
             initialJournal={entryDay.journal?.text || ""}
-            initialHappyHour={entryDay.happyHour || ""}
             ouraSync={ouraSync}
             onBack={goBackView}
             onOpenTool={openTool}
@@ -2312,21 +2333,26 @@
               setCustomPrompts(next);
               await storageSet('settings:custom_prompts', next);
             }}
-            onSaved={async (moods, journalText, noteText, happyHourText, selectedPrompt, hasPhysical) => {
+            onSaved={async (moods, journalText, noteText, selectedPrompt, hasPhysical) => {
               await storageSet(`mood:${entryDay.key}`, moods);
               if (journalText.trim() || noteText.trim()) {
                 const dateDisplay = new Date(entryDay.key + "T12:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
                 await storageSet(`journal:${entryDay.key}`, { text: journalText, note: noteText.trim(), prompt: selectedPrompt || dailyPrompt, savedAt: new Date().toISOString(), dateKey: entryDay.key, dateDisplay });
-              }
-              if (happyHourText && happyHourText.trim()) {
-                await storageSet(`settings:happy_hour_${entryDay.key}`, happyHourText.trim());
               }
               if (entryDay.key === todayKey) {
                 setTodayMoods(moods);
                 setMoodSaved(moods.length > 0);
                 await loadHistoryCalendar(); // keeps today's insight; only fills one in if none exists yet
               } else {
-                await loadHistoryCalendar();
+                // Past days: Mood → Journal, then save and go back to where
+                // they came from (no Physical / Mantra / Exercise). Refresh the
+                // day-detail snapshot so it shows what was just saved.
+                const days = await loadHistoryCalendar();
+                computeStreak();
+                const fresh = (days || []).find(d => d.key === entryDay.key);
+                if (fresh && selectedDay && selectedDay.key === entryDay.key) setSelectedDay(fresh);
+                goBackView();
+                return;
               }
               computeStreak();
               // Navigate to daily exercise suggestion — dotOffset shifts the
@@ -2335,8 +2361,7 @@
               // stays continuous.
               setExerciseMoods(moods);
               setExerciseDateKey(entryDay.key);
-              // (−1 for other days: their check-in has no Mantra step)
-              setExerciseDotOffset((hasPhysical ? 1 : 0) - (entryDay.key === todayKey ? 0 : 1));
+              setExerciseDotOffset(hasPhysical ? 1 : 0);
               navigate("daily-exercise");
             }}
           />
@@ -2350,7 +2375,7 @@
             moods={exerciseMoods}
             dateKey={exerciseDateKey}
             dotOffset={exerciseDotOffset}
-            onBack={() => { setResumeStep(4 + exerciseDotOffset); goBackView(); }}
+            onBack={() => { setResumeStep(exerciseDotOffset ? 4 : 3); goBackView(); }}
             onDone={async (exerciseId) => {
               if (exerciseId) {
                 const exKey = `settings:exercises_${exerciseDateKey}`;
@@ -2395,9 +2420,6 @@
         // Exercise counts
         const exCounts = {};
         historyDays.forEach(d => { if (d.exercises) d.exercises.forEach(id => { exCounts[id] = (exCounts[id] || 0) + 1; }); });
-        // Happy hour summaries — keyed by date for recency filtering
-        const happyHourDays = historyDays.filter(d => d.happyHour).map(d => ({ key: d.key, text: d.happyHour }));
-        const happyHours = happyHourDays.map(d => d.text);
         // Journal entries keyed by date for recency filtering
         const journalDays = historyDays.filter(d => d.journal?.text).map(d => ({ key: d.key, text: d.journal.text }));
         // "What's behind these feelings?" notes + mantra reflections — feed the combined profile synopsis
@@ -2433,7 +2455,6 @@
           return Object.entries(freq).sort((a,b) => b[1]-a[1]).slice(0, n).map(([t]) => t);
         }
         const journalThemes = extractThemes(journalDays);
-        const happyHourThemes = extractThemes(happyHourDays);
         const insightThemes = extractThemes(historyDays.filter(d=>d.insight).map(d=>({key:d.key,text:d.insight})));
         // Compute longest streak locally (homeLongestStreak is defined further down, after this early return)
         let profileLongest = 0, profileRun = 0;
@@ -2455,10 +2476,8 @@
             longestStreak={profileLongest}
             journalCount={journalDays.length}
             journalThemes={journalThemes}
-            happyHours={happyHours}
             exerciseCounts={exCounts}
             toolNames={TOOL_NAMES_P}
-            happyHourThemes={happyHourThemes}
             journalTexts={journalTexts}
             insightTexts={insightTexts}
             userTraits={traits.map(t => t.full)}
@@ -2473,14 +2492,15 @@
             onNavJournals={() => navigate("journal-entries")}
             onNavAffirmations={() => navigate("affirmation-history")}
             onNavPhysicalHealth={() => navigate("physical-health")}
+            onNavNotifications={() => navigate("notifications")}
             likedCount={(mantraSet || []).length}
+            mantraSet={mantraSet || []}
             goodDays={goodDays}
             hardDays={hardDays}
             neutralDays={neutralDays}
             goodPct={goodPct}
             totalEntries={totalMoodEntries}
             journalDays={journalDays}
-            happyHourDays={happyHourDays}
             moodScoreDays={moodScoreDays}
             onNavMoods={() => navigate("mood-breakdown")}
             onNavStreaks={() => navigate("streak-list")}
@@ -2529,7 +2549,7 @@
       const displayDayIsToday = displayDay.key === todayKey;
       const displayDayMoods = !displayDay.future && displayDay.mood && displayDay.mood.length > 0 ? displayDay.mood : null;
       const noEntryToday = displayDayIsToday && !displayDayMoods;
-      // Always pull today's affirmation/happyHour from today's history entry (persists during chart scrolling)
+      // Always pull today's affirmation/commitment from today's history entry (persists during chart scrolling)
       const todayHistoryDay = historyDays.find(d => d.key === todayKey);
 
       // Headline text (insights logic will replace this later)
@@ -2707,13 +2727,12 @@
             </div>
           )}
 
-          {/* Today's check-in — mantra, happy hour, commitment, physical data */}
+          {/* Today's check-in — mantra, commitment, physical data */}
           {(() => {
             const todayHealth = ouraSync?.connected ? composeHealth(ouraSync.days, todayKey) : null;
             const metrics = physicalMetricsFor(todayHealth);
-            const showHappy = moodSaved && todayHistoryDay?.happyHour;
             const commitment = todayHistoryDay?.commitment;
-            if (!affirmation && !metrics && !showHappy && !commitment) return null;
+            if (!affirmation && !metrics && !commitment) return null;
             return (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 32, ...anim(0.46) }}>
                 <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: moss, textTransform: 'uppercase' }}>Today's check-in</div>
@@ -2740,12 +2759,6 @@
                 })()}
               </div>
             </div>
-                )}
-                {showHappy && (
-                  <div style={{ background: bone, borderRadius: 16, padding: 20, textAlign: 'center', color: ink }}>
-                    <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, textTransform: 'uppercase', marginBottom: 12 }}>Your happy hour</div>
-                    <p style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 18, fontStyle: 'italic', lineHeight: '24px', margin: 0 }}>{todayHistoryDay.happyHour}</p>
-                  </div>
                 )}
                 {commitment && <CommitmentCard commitment={commitment} />}
                 {metrics && (
@@ -3184,9 +3197,9 @@
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {others.map((p, i) => (
               <button key={i} onClick={() => onSelect(p)}
-                style={{ background: bone, border: "none", borderRadius: 14, padding: "18px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, cursor: "pointer", textAlign: "left" }}>
-                <span style={{ fontFamily: "'Lora', Georgia, serif", fontStyle: "italic", fontSize: 16, color: ink, lineHeight: 1.55, flex: 1 }}>{p}</span>
-                <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, color: moss, flexShrink: 0, lineHeight: 1 }}>+</span>
+                style={{ background: ink, border: "none", borderRadius: 14, padding: "18px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, cursor: "pointer", textAlign: "left" }}>
+                <span style={{ fontFamily: "'Lora', Georgia, serif", fontStyle: "italic", fontSize: 16, color: cream, lineHeight: 1.55, flex: 1 }}>{p}</span>
+                <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, color: sage, flexShrink: 0, lineHeight: 1 }}>+</span>
               </button>
             ))}
             <button onClick={onAddNew}
@@ -3219,90 +3232,6 @@
           </div>
         </Shell>
       );
-    }
-
-    // ─── Happy Hour options ─────────────────────────────────────────────
-    // Happy Hour is a multi-select built from what the user has written
-    // before. Each saved entry is split on commas/periods into phrases and
-    // tallied. From ~7 distinct phrases on, ONE AI pass looks at the whole
-    // history at once (each phrase with the full entry it came from) and
-    // returns the option set: near-synonyms merged under one label ("Rest" /
-    // "Take it easy"), fragments that aren't activities on their own dropped
-    // ("Do it anyway"). Cached in settings:happy_hour_groups as
-    // { fp, map: phraseKey → label | null (skip) } and only re-run when the
-    // set of phrases changes. Never more than 10 options, most-used first.
-    // Selections + the write-in are saved as one comma-joined string in the
-    // same settings:happy_hour_{date} row as before.
-    const HH_CONSOLIDATE_AT = 7, HH_MAX_OPTIONS = 10, HH_MAX_CHARS = 40, HH_GROUP_MAX = 80;
-    function splitHappyHour(text) {
-      return String(text || '').split(/[,.;\n]+/).map(p => p.replace(/\s+/g, ' ').trim()).filter(p => p.length > 1);
-    }
-    const hhKey = (p) => String(p).toLowerCase().replace(/[^a-z0-9\s']/g, '').replace(/\s+/g, ' ').trim();
-    function tallyHappyHour(texts) {
-      const tally = {}; // key → { count, labels: { originalText: count }, entry: a full entry it came from }
-      texts.forEach(t => splitHappyHour(t).forEach(p => {
-        const k = hhKey(p); if (!k) return;
-        const e = tally[k] || (tally[k] = { count: 0, labels: {}, entry: String(t).replace(/\s+/g, ' ').trim().slice(0, 140) });
-        e.count++; e.labels[p] = (e.labels[p] || 0) + 1;
-      }));
-      return tally;
-    }
-    const hhDisplay = (labels) => {
-      const best = Object.entries(labels).sort((a, b) => b[1] - a[1])[0][0];
-      return best.charAt(0).toUpperCase() + best.slice(1);
-    };
-    function buildHappyHourOptions(tally, map = {}) {
-      const groups = {};
-      Object.entries(tally).forEach(([k, e]) => {
-        const label = k in map ? map[k] : hhDisplay(e.labels);
-        if (!label) return;                      // AI marked it as a fragment / not an activity
-        if (label.length > HH_MAX_CHARS) return; // long old sentences never become chips
-        const gk = hhKey(label);
-        const g = groups[gk] || (groups[gk] = { label, count: 0 });
-        g.count += e.count;
-      });
-      return Object.values(groups).sort((a, b) => b.count - a.count).slice(0, HH_MAX_OPTIONS).map(g => g.label);
-    }
-    const hhHash = (str) => { let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
-    async function loadHappyHourOptions() {
-      const [rows, cache] = await Promise.all([
-        sbList('settings', 'key,value', `key=gte.happy_hour_&key=lt.happy_hour_z`),
-        storageGet('settings:happy_hour_groups'),
-      ]);
-      const texts = rows.map(r => r.value).filter(v => typeof v === 'string');
-      const tally = tallyHappyHour(texts);
-      const keys = Object.keys(tally).sort((a, b) => tally[b].count - tally[a].count);
-      const consolidate = keys.length >= HH_CONSOLIDATE_AT;
-      const topKeys = keys.slice(0, HH_GROUP_MAX);
-      const fp = hhHash([...topKeys].sort().join('|'));
-      const map = consolidate && cache && cache.map ? cache.map : {};
-      const options = buildHappyHourOptions(tally, map);
-      // Regroup the whole history (in the background) whenever the set of
-      // phrases has changed since the last grouping.
-      const refresh = async () => {
-        if (!consolidate || (cache && cache.fp === fp)) return null;
-        const previous = [...new Set(Object.values(map).filter(Boolean))].slice(0, 20);
-        const raw = await callClaude('happy_hour_groups', {
-          items: topKeys.map(k => ({ text: hhDisplay(tally[k].labels), count: tally[k].count, entry: tally[k].entry })),
-          previous,
-        });
-        if (!raw) return null;
-        const nextMap = {};
-        let parsed = 0;
-        raw.split('\n').forEach(line => {
-          const m = line.match(/^\s*(.+?)\s*:\s*([\d,\s]*)$/);
-          if (!m) return;
-          const label = m[1].replace(/^[-*•\s"']+|["']+$/g, '').trim().slice(0, 30);
-          const idxs = (m[2].match(/\d+/g) || []).map(Number).filter(i => topKeys[i]);
-          if (!label || !idxs.length) return;
-          const skip = /^skip$/i.test(label);
-          idxs.forEach(i => { nextMap[topKeys[i]] = skip ? null : label; parsed++; });
-        });
-        if (!parsed) return null;
-        await storageSet('settings:happy_hour_groups', { fp, map: nextMap });
-        return buildHappyHourOptions(tally, nextMap);
-      };
-      return { options, map, refresh };
     }
 
     // ─── Mantras: personal set + daily run-through ───────────────────────
@@ -3389,13 +3318,15 @@
     }
     // Label / practiced count — shared by the deck card and the growing
     // card so they fade out in exactly the same spots.
-    function MantraCardChrome({ label, labelColor, practiced, height, library, onPractice }) {
+    function MantraCardChrome({ label, labelColor, practiced, height, library, onPractice, hidePracticed }) {
       return (
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, height, pointerEvents: "none" }}>
           <div style={{ position: "absolute", top: 36, left: 0, right: 0, textAlign: "center", ...mantraLabelStyle(labelColor) }}>{label}</div>
-          <div style={{ position: "absolute", bottom: library ? 84 : 50, left: 0, right: 0, textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 10, color: shale }}>
-            Practiced {practiced} time{practiced === 1 ? "" : "s"}
-          </div>
+          {!hidePracticed && (
+            <div style={{ position: "absolute", bottom: library ? 84 : 50, left: 0, right: 0, textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 10, color: shale }}>
+              Practiced {practiced} time{practiced === 1 ? "" : "s"}
+            </div>
+          )}
           {library && (
             <div style={{ position: "absolute", bottom: 32, left: 0, right: 0, display: "flex", justifyContent: "center" }}>
               <MantraPill onClick={onPractice} style={{ pointerEvents: onPractice ? "auto" : "none" }}>PRACTICE</MantraPill>
@@ -3433,7 +3364,7 @@
 
     // Swipeable stack — same geometry/easing as the favorites deck, with the
     // back cards peeking out below (Figma: Mantras – 1 Pick).
-    function MantraDeck({ items, index, setIndex, height, frontRef, cardInfo, goRef, onTouched, locked, library, onPractice }) {
+    function MantraDeck({ items, index, setIndex, height, frontRef, cardInfo, goRef, onTouched, locked, library, onPractice, arrows }) {
       const { useState: useS, useEffect: useE, useRef: useR } = React;
       const n = items.length;
       const at = (i) => items[((i % n) + n) % n];
@@ -3483,8 +3414,16 @@
                   transition: k === 0 && phase === "dragging" ? "none" : `transform .42s ${MANTRA_EASE}, opacity .42s ${MANTRA_EASE}, background .42s ${MANTRA_EASE}` }}>
                 <div style={{ opacity: L.dim, transition: `opacity .42s ${MANTRA_EASE}` }}>
                   <MantraCardChrome label={info.label} labelColor={info.labelColor} practiced={info.practiced} height={height}
-                    library={library} onPractice={front && onPractice ? () => onPractice(m) : undefined} />
-                  {library ? (
+                    library={library} onPractice={front && onPractice ? () => onPractice(m) : undefined} hidePracticed={arrows} />
+                  {arrows && n > 1 && (
+                    <div style={{ position: "absolute", bottom: 34, left: 0, right: 0, display: "flex", justifyContent: "center", gap: 24 }}>
+                      {[["‹", 1], ["›", -1]].map(([g, d]) => (
+                        <button key={g} onClick={() => { if (phase === "idle" && !locked) exit(d); }} aria-label={d === 1 ? "Previous mantra" : "Next mantra"}
+                          style={{ width: 48, height: 48, borderRadius: 24, border: `1px solid ${sage}`, background: "transparent", color: sage, fontFamily: "'DM Mono', monospace", fontSize: 16, cursor: "pointer", padding: 0 }}>{g}</button>
+                      ))}
+                    </div>
+                  )}
+                  {library || arrows ? (
                     <div data-mantra-text style={{ position: "absolute", top: 66, left: 36, right: 36, bottom: 104 }}>
                       <FitMantraText text={m.text} />
                     </div>
@@ -3658,16 +3597,19 @@
       const cardInfo = (m) => {
         if (library) return { label: "Mantra", labelColor: shale, practiced: practicedFor(m.text) };
         const isFirst = deck.first && m === deck.first;
-        if (isFirst && deck.firstKind === "suggested") return { label: "Suggested for today", labelColor: cream, practiced: practicedFor(m.text) };
-        if (isFirst && deck.firstKind === "initial") return { label: isToday ? "Today’s mantra" : "Your mantra", labelColor: cream, practiced: practicedFor(m.text) };
+        if (isFirst && deck.firstKind === "suggested") return { label: "Suggested for today", labelColor: shale, practiced: practicedFor(m.text) };
+        if (isFirst && deck.firstKind === "initial") return { label: isToday ? "Today’s mantra" : "Your mantra", labelColor: shale, practiced: practicedFor(m.text) };
         return { label: "Mantra", labelColor: sage, practiced: practicedFor(m.text) };
       };
       const current = deck.list.length ? deck.list[((index % deck.list.length) + deck.list.length) % deck.list.length] : null;
 
       const deckH = Math.max(300, Math.min(436, vp.h - 408));
+      // Done card (Figma 279:217) — same size as the pick card; text centre and
+      // Practice Again pill offsets scale with it.
+      const doneTextY = Math.round(deckH / 2 - 19), donePillTop = deckH - 63;
       // Full screen = the fixed layer itself (100%), never a measured size —
       // on iPhone the measured height can come back short (e.g. keyboard
-      // still up from the Happy Hour write-in).
+      // still up from the Journal step).
       const centerY = "42.3%";
       const FULL = { top: 0, left: 0, width: "100%", height: "100%", r: 0 };
       const rectOf = (el, r = 16) => { const b = el.getBoundingClientRect(); return { top: b.top, left: b.left, width: b.width, height: b.height, r }; };
@@ -3706,7 +3648,7 @@
         if (!doneCardRef.current) return;
         const rect = rectOf(doneCardRef.current);
         setOrigin("done"); setPhase("growing");
-        morph(rect, FULL, { y: rect.top + 82, size: 20 }, { y: centerY, size: 30 }, { from: "done", fade: "out" }, () => setPhase("intro"));
+        morph(rect, FULL, { y: rect.top + doneTextY, size: 30 }, { y: centerY, size: 30 }, { from: "done", fade: "out" }, () => setPhase("intro"));
       }
       function closeIntro() {
         const back = origin === "done" ? "done" : "pick";
@@ -3716,7 +3658,7 @@
           if (!el) { setOv(null); setFl(null); setPhase(back); return; }
           const rect = rectOf(el);
           morph(FULL, rect, { y: centerY, size: 30 },
-            back === "done" ? { y: rect.top + 82, size: 20 } : { y: deckTextY(rect), size: deckTextSize() },
+            back === "done" ? { y: rect.top + doneTextY, size: 30 } : { y: deckTextY(rect), size: deckTextSize() },
             back === "pick" ? { from: "pick", fade: "in", info: cardInfo(chosen), h: rect.height } : null,
             () => { setOv(null); setFl(null); setPhase(back); }, ink, back === "pick" ? cardBg : ink);
         });
@@ -3730,13 +3672,14 @@
         nextFrame(() => {
           if (!doneCardRef.current) { setOv(null); setFl(null); setPhase("done"); return; }
           const rect = rectOf(doneCardRef.current);
-          morph(FULL, rect, { y: centerY, size: 30 }, { y: rect.top + 82, size: 20 }, null, () => { setOv(null); setFl(null); setPhase("done"); });
+          morph(FULL, rect, { y: centerY, size: 30 }, { y: rect.top + doneTextY, size: 30 }, null, () => { setOv(null); setFl(null); setPhase("done"); });
         });
       }
 
       const btnStyle = (light) => ({ position: "absolute", left: "50%", transform: "translateX(-50%)", width: "min(312px, calc(100vw - 78px))", height: 52,
         bottom: "calc(70px + env(safe-area-inset-bottom))", borderRadius: 14, border: "none", background: light ? cream : ink, color: light ? ink : cream,
         fontFamily: "'DM Mono', monospace", fontSize: 13, letterSpacing: "0.05em", cursor: "pointer" });
+      const donePillStyle = { height: 32, width: 145, padding: 0, borderRadius: 100, fontSize: 10, letterSpacing: 0, color: sage };
       const showPick = phase === "pick" || phase === "closing" || (phase === "growing" && origin === "pick");
       const showDone = phase === "shrinking" || phase === "done" || (phase === "growing" && origin === "done");
 
@@ -3752,12 +3695,15 @@
                 transition: ov && ov.anim ? ["top", "left", "width", "height", "border-radius", "background-color"].map(p => `${p} ${MANTRA_GROW_MS}ms ${MANTRA_EASE}`).join(", ") : "none" }}>
                 {ov && ov.chrome && ov.chrome.from === "pick" && (
                   <div style={{ position: "absolute", top: 0, left: 0, width: r.width, animation: ov.chrome.fade === "out" ? "mantraFadeOut .22s ease forwards" : `mantraFadeIn .25s ease ${MANTRA_GROW_MS - 220}ms both` }}>
-                    <MantraCardChrome label={ov.chrome.info.label} labelColor={ov.chrome.info.labelColor} practiced={ov.chrome.info.practiced} height={ov.chrome.h} library={library} />
+                    <MantraCardChrome label={ov.chrome.info.label} labelColor={ov.chrome.info.labelColor} practiced={ov.chrome.info.practiced} height={ov.chrome.h} library={library} hidePracticed={!library} />
                   </div>
                 )}
                 {ov && ov.chrome && ov.chrome.from === "done" && (
-                  <div style={{ position: "absolute", top: 160, left: 0, width: doneCardRef.current ? doneCardRef.current.offsetWidth : r.width, display: "flex", justifyContent: "center", animation: "mantraFadeOut .22s ease forwards" }}>
-                    <MantraPill>PRACTICE AGAIN</MantraPill>
+                  <div style={{ position: "absolute", top: 0, left: 0, width: doneCardRef.current ? doneCardRef.current.offsetWidth : r.width, height: deckH, animation: "mantraFadeOut .22s ease forwards" }}>
+                    <div style={{ position: "absolute", top: 36, left: 0, right: 0, textAlign: "center", ...mantraLabelStyle(shale), textTransform: "none", letterSpacing: 0 }}>{isToday ? "Today’s mantra" : "Your mantra"}</div>
+                    <div style={{ position: "absolute", top: donePillTop, left: 0, right: 0, display: "flex", justifyContent: "center" }}>
+                      <MantraPill style={donePillStyle}>Practice Again</MantraPill>
+                    </div>
                   </div>
                 )}
               </div>
@@ -3831,26 +3777,19 @@
           <div style={{ display: "flex", flexDirection: "column", boxSizing: "border-box", minHeight: "calc(100dvh - env(safe-area-inset-top) - 20px)", paddingBottom: 28, marginBottom: "calc(-60px - env(safe-area-inset-bottom))",
             opacity: phase === "growing" ? 0 : 1, transition: "opacity .28s ease" }}>
             {topBar}
-            {stepLabel("Choose a mantra")}
+            {stepLabel("Today’s mantra")}
+            <h2 style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 24, fontWeight: 400, fontStyle: "italic", color: ink, lineHeight: "44px", margin: "0 0 22px", textAlign: "center" }}>Practice being positive</h2>
             {deck.list.length > 0 ? (
               <MantraDeck items={deck.list} index={index} setIndex={setIndex} height={deckH} frontRef={frontRef} cardInfo={cardInfo}
-                goRef={goRef} onTouched={freeze} locked={phase !== "pick"} />
+                goRef={goRef} onTouched={freeze} locked={phase !== "pick"} arrows />
             ) : (
               <p style={{ fontFamily: "'Lora', Georgia, serif", fontStyle: "italic", fontSize: 16, color: moss, textAlign: "center", margin: "60px 0" }}>Add a few mantras to get started.</p>
-            )}
-            {deck.list.length > 1 && (
-              <div style={{ display: "flex", justifyContent: "center", gap: 24, marginTop: 18 }}>
-                {[["‹", 1], ["›", -1]].map(([g, d]) => (
-                  <button key={g} onClick={() => goRef.current && goRef.current(d)} aria-label={d === 1 ? "Previous mantra" : "Next mantra"}
-                    style={{ width: 48, height: 48, borderRadius: 24, border: `1px solid ${sand}`, background: cream, color: moss, fontFamily: "'DM Mono', monospace", fontSize: 16, cursor: "pointer" }}>{g}</button>
-                ))}
-              </div>
             )}
             <div style={{ flex: 1, minHeight: 28 }} />
             <button onClick={growFromPick} disabled={!current || phase !== "pick"}
               style={{ width: "100%", background: ink, color: cream, border: "none", borderRadius: 14, padding: "16px 0", fontFamily: "'DM Mono', monospace", fontSize: 13, letterSpacing: "0.05em", cursor: "pointer", opacity: current ? 1 : 0.4 }}>Begin</button>
             <div style={{ textAlign: "center", marginTop: 20 }}>
-              <button onClick={onEditSet} style={{ background: "none", border: "none", fontFamily: "'DM Mono', monospace", fontSize: 12, color: rust, cursor: "pointer" }}>Edit my mantras</button>
+              <button onClick={onEditSet} style={{ background: "none", border: "none", fontFamily: "'DM Mono', monospace", fontSize: 12, color: ink, cursor: "pointer" }}>Edit my mantras</button>
             </div>
           </div>
           {overlay}
@@ -3867,20 +3806,21 @@
               {dotsEl}
             </div>
             <div style={{ animation: "mantraFadeIn .5s ease .25s both" }}>{stepLabel("Your mantra for today")}</div>
-            <div ref={doneCardRef} style={{ position: "relative", height: 222, borderRadius: 16, background: phase === "done" ? ink : "transparent" }}>
+            <div ref={doneCardRef} style={{ position: "relative", height: deckH, marginTop: 23, borderRadius: 16, background: phase === "done" ? ink : "transparent" }}>
               {phase === "done" && chosen && (
                 <>
-                  <div style={{ position: "absolute", top: 82, left: 0, right: 0, display: "flex", justifyContent: "center", transform: "translateY(-50%)" }}>
-                    <MantraText text={chosen.text} size={20} />
+                  <div style={{ position: "absolute", top: 36, left: 0, right: 0, textAlign: "center", ...mantraLabelStyle(shale), textTransform: "none", letterSpacing: 0, animation: "mantraFadeIn .35s ease both" }}>{isToday ? "Today’s mantra" : "Your mantra"}</div>
+                  <div style={{ position: "absolute", top: doneTextY, left: 0, right: 0, display: "flex", justifyContent: "center", transform: "translateY(-50%)" }}>
+                    <MantraText text={chosen.text} size={30} />
                   </div>
-                  <div style={{ position: "absolute", top: 160, left: 0, right: 0, display: "flex", justifyContent: "center", animation: "mantraFadeIn .35s ease both" }}>
-                    <MantraPill onClick={growFromDone}>PRACTICE AGAIN</MantraPill>
+                  <div style={{ position: "absolute", top: donePillTop, left: 0, right: 0, display: "flex", justifyContent: "center", animation: "mantraFadeIn .35s ease both" }}>
+                    <MantraPill onClick={growFromDone} style={donePillStyle}>Practice Again</MantraPill>
                   </div>
                 </>
               )}
             </div>
             {line && (
-              <p style={{ fontFamily: "'Lora', Georgia, serif", fontStyle: "italic", fontSize: 16, lineHeight: "22px", color: ink, textAlign: "center", textWrap: "balance", maxWidth: 280, margin: "54px auto 0", animation: "mantraFadeIn .5s ease .25s both" }}>{line}</p>
+              <p style={{ fontFamily: "'Lora', Georgia, serif", fontStyle: "italic", fontSize: 16, lineHeight: "22px", color: ink, textAlign: "center", textWrap: "balance", maxWidth: 280, margin: "36px auto 0", animation: "mantraFadeIn .5s ease .25s both" }}>{line}</p>
             )}
             <div style={{ flex: 1, minHeight: 28 }} />
             <button onClick={() => chosen && onComplete(chosen)} disabled={saving}
@@ -3942,21 +3882,21 @@
           <p style={{ fontFamily: serif, fontStyle: "italic", fontSize: 13, color: moss, lineHeight: 1.5, margin: "0 0 24px" }}>Keep it to about ten — the ones that actually land. Short is easier to carry.</p>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {items.map(m => (
-              <div key={m.idx + ":" + m.text} style={{ background: bone, borderRadius: 14, padding: "14px 16px" }}>
+              <div key={m.idx + ":" + m.text} style={{ background: ink, borderRadius: 14, padding: "14px 16px" }}>
                 {editing === m.idx ? (
                   <div>
                     <input autoFocus value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => e.key === "Enter" && saveEdit()}
-                      style={{ width: "100%", background: "transparent", border: "none", outline: "none", fontFamily: serif, fontStyle: "italic", fontSize: 16, color: ink, padding: 0 }} />
+                      style={{ width: "100%", background: "transparent", border: "none", outline: "none", fontFamily: serif, fontStyle: "italic", fontSize: 16, color: "#fff", padding: 0 }} />
                     <div style={{ display: "flex", justifyContent: "flex-end", gap: 16, marginTop: 10 }}>
-                      <button onClick={() => setEditing(null)} style={{ background: "none", border: "none", fontFamily: mono, fontSize: 11, color: moss, cursor: "pointer" }}>cancel</button>
-                      <button onClick={saveEdit} style={{ background: "none", border: "none", fontFamily: mono, fontSize: 11, color: rust, cursor: "pointer" }}>save</button>
+                      <button onClick={() => setEditing(null)} style={{ background: "none", border: "none", fontFamily: mono, fontSize: 11, color: sage, cursor: "pointer" }}>cancel</button>
+                      <button onClick={saveEdit} style={{ background: "none", border: "none", fontFamily: mono, fontSize: 11, color: tangerine, cursor: "pointer" }}>save</button>
                     </div>
                   </div>
                 ) : (
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <span style={{ flex: 1, fontFamily: serif, fontStyle: "italic", fontSize: 16, lineHeight: 1.5, color: ink }}>{m.text}</span>
-                    <span style={{ fontFamily: mono, fontSize: 9, color: moss, whiteSpace: "nowrap" }}>{practicedFor(m.text)}×</span>
-                    <button onClick={() => { setEditing(m.idx); setDraft(m.text); }} style={{ background: "none", border: "none", fontFamily: mono, fontSize: 11, color: moss, cursor: "pointer", padding: 0 }}>edit</button>
+                    <span style={{ flex: 1, fontFamily: serif, fontStyle: "italic", fontSize: 16, lineHeight: 1.5, color: "#fff" }}>{m.text}</span>
+                    <span style={{ fontFamily: mono, fontSize: 9, color: sage, whiteSpace: "nowrap" }}>{practicedFor(m.text)}×</span>
+                    <button onClick={() => { setEditing(m.idx); setDraft(m.text); }} style={{ background: "none", border: "none", fontFamily: mono, fontSize: 11, color: sage, cursor: "pointer", padding: 0 }}>edit</button>
                     <button onClick={() => onSave(items.filter(x => x !== m))} aria-label="Remove" style={{ background: "none", border: "none", fontFamily: mono, fontSize: 13, color: sage, cursor: "pointer", padding: 0 }}>✕</button>
                   </div>
                 )}
@@ -4011,7 +3951,7 @@
       return <textarea ref={ref} value={value} rows={1} {...rest} style={{ ...style, overflow: "hidden" }} />;
     }
 
-    function DailyEntryView({ day, prompt, moodOrder, initialMoods, initialNote, initialJournal, initialHappyHour, onBack, onSaved, customPrompts = [], onSaveCustomPrompts, initialStep = 1, affirmation, ratings = {}, onRateAff, onDislikeAff, onRefreshAff, onChooseAff, ouraSync, onPullOura, mantraSet, mantraPracticedFor = () => 0, onSaveMantraSet, onSuggestMantra, onPickMantra }) {
+    function DailyEntryView({ day, prompt, moodOrder, initialMoods, initialNote, initialJournal, onBack, onSaved, customPrompts = [], onSaveCustomPrompts, initialStep = 1, affirmation, ratings = {}, onRateAff, onDislikeAff, onRefreshAff, onChooseAff, ouraSync, onPullOura, mantraSet, mantraPracticedFor = () => 0, onSaveMantraSet, onSuggestMantra, onPickMantra }) {
       const { useState: useS, useEffect: useE } = React;
       const [step, setStep] = useS(initialStep);
       const [showAddMood, setShowAddMood] = useS(false);
@@ -4030,38 +3970,8 @@
       const [entryMoods, setEntryMoods] = useS(initialMoods || []);
       const [note, setNote] = useS(initialNote || "");
       const [journalText, setJournalText] = useS(initialJournal || "");
-      const [happyHour, setHappyHour] = useS(initialHappyHour || ""); // legacy free-text (pre-fill only)
-      const [hhOptions, setHhOptions] = useS(null);   // null while loading
-      const [hhSelected, setHhSelected] = useS([]);   // chosen option labels
-      const [hhCustom, setHhCustom] = useS("");       // 40-char write-in
-      const hhTouchedRef = React.useRef(false);
-      useE(() => {
-        let cancelled = false;
-        (async () => {
-          const { options, map, refresh } = await loadHappyHourOptions();
-          if (cancelled) return;
-          // Pre-fill when editing a past day: items that match an option get
-          // selected, anything else goes into the write-in.
-          const applyInitial = (opts, m) => {
-            const byKey = Object.fromEntries(opts.map(o => [hhKey(o), o]));
-            const sel = [], rest = [];
-            splitHappyHour(initialHappyHour).forEach(p => {
-              const hit = byKey[hhKey(p)] || byKey[hhKey(m[hhKey(p)] || '')];
-              if (hit) { if (!sel.includes(hit)) sel.push(hit); } else rest.push(p);
-            });
-            setHhSelected(sel); setHhCustom(rest.join(', '));
-          };
-          setHhOptions(options); applyInitial(options, map);
-          const next = await refresh();
-          if (cancelled || !next || hhTouchedRef.current) return;
-          setHhOptions(next); applyInitial(next, {});
-        })();
-        return () => { cancelled = true; };
-      }, [day.key]);
-      const happyHourValue = [...hhSelected, hhCustom.trim()].filter(Boolean).join(', ');
       const [saving, setSaving] = useS(false);
       const [journalPrompt, setJournalPrompt] = useS(prompt || DAILY_PROMPTS[0]);
-      const [happyPrompt] = useS("What's one nice thing you can do for yourself today?");
 
       // Oura health tile (Step 1) — ouraConnected: null while loading,
       // then true/false once we know. health: the most recent synced day's
@@ -4088,17 +3998,20 @@
       // message instead of cards (see Step 2 render below). While still
       // loading (ouraConnected === null) we don't insert the step, so the
       // dot count/step order never flickers once it resolves.
-      const hasPhysical = ouraConnected === true;
-      // "What's behind these feelings?" now lives on Step 1 with the moods,
-      // so the Physical step's AI read can use it.
-      // The Mantra step is only for today's check-in. Adding or editing an
-      // entry for any other day ends at Happy Hour (Next there saves).
+      // Past-day entries skip Physical (and Mantra/Exercise) — Mood → Journal.
+      const hasPhysical = ouraConnected === true && day.key === getTodayKey();
+      // Flow: Mood → Journal ("What's behind these feelings?" + optional
+      // prompt) → Physical (Oura only) → Mantra → Exercise. Journal comes
+      // before Physical so the Physical AI read can use the note. The
+      // Exercise step is its own view (DailyExerciseView) but shares the dots.
+      // Past-day entries are just Mood → Journal; Save on Journal saves and
+      // goes back (no Physical, Mantra or Exercise).
       const isTodayEntry = day.key === getTodayKey();
-      const TOTAL = (hasPhysical ? 7 : 6) - (isTodayEntry ? 0 : 1);
-      const journalStep = hasPhysical ? 3 : 2;
-      const happyStep = hasPhysical ? 4 : 3;
-      const affirmationStep = happyStep + 1;
-      const lastStep = isTodayEntry ? affirmationStep : happyStep;
+      const TOTAL = isTodayEntry ? (hasPhysical ? 5 : 4) : 2;
+      const journalStep = 2;
+      const physicalStep = hasPhysical ? 3 : -1;
+      const affirmationStep = hasPhysical ? 4 : 3;
+      const lastStep = isTodayEntry ? affirmationStep : journalStep;
 
       // Keep resolvedAff in sync with live prop changes (refresh / rate /
       // choose all flow back through the `affirmation` prop).
@@ -4133,10 +4046,10 @@
       // step. Cached per health-data-day (settings:physical_{date}) so it's
       // generated once and reused for the rest of that day.
       const [physicalContent, setPhysicalContent] = useS(null);
-      // Generated once the user moves past Step 1, so it can read their
-      // moods + "what's behind it" note and (when it's obvious) separate
-      // what's coming from their head vs. their body.
-      const physicalReady = step >= 2;
+      // Generated once the user reaches the Physical step (after Journal), so
+      // it can read their moods + "what's behind it" note and (when it's
+      // obvious) separate what's coming from their head vs. their body.
+      const physicalReady = hasPhysical && step >= physicalStep;
       const moodLabelsForAI = entryMoods.map(m => m.label);
       const noteForAI = note.trim();
       const ctxHash = (() => { const str = moodLabelsForAI.join(',') + '|' + noteForAI; let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0; return (h >>> 0).toString(36); })();
@@ -4183,7 +4096,7 @@
       // the one-sentence echo of "What's behind it" + Journal shown under the
       // mantra card at the end. Nothing written → no line.
       const [mantraSuggestion, setMantraSuggestion] = useS(null);
-      const mantraReady = isTodayEntry && step >= happyStep;
+      const mantraReady = isTodayEntry && step > journalStep;
       const mantraCtx = (() => { const str = [(mantraSet || []).map(m => m.text).join('|'), entryMoods.map(m => m.label).join(','), note.trim(), journalText.trim()].join('§'); let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0; return (h >>> 0).toString(36); })();
       useE(() => {
         if (!mantraReady || !mantraSet || !mantraSet.length) return;
@@ -4230,7 +4143,7 @@
       async function handleSave(chosenMantra) {
         setSaving(true);
         if (chosenMantra && chosenMantra.text && onPickMantra) await onPickMantra(day.key, chosenMantra);
-        await onSaved(entryMoods, journalText, note, happyHourValue, journalPrompt, hasPhysical);
+        await onSaved(entryMoods, journalText, note, journalPrompt, hasPhysical);
         setSaving(false);
       }
 
@@ -4271,10 +4184,10 @@
 
       const nextBtn = (opts = {}) => (
         <button
-          onClick={opts.onPress || (step < lastStep ? () => setStep(prev => prev + 1) : handleSave)}
+          onClick={opts.onPress || (step < lastStep ? () => setStep(prev => prev + 1) : () => handleSave())}
           disabled={opts.disabled || saving}
           style={{ width: "100%", background: opts.ghost ? "transparent" : ink, color: opts.ghost ? ink : cream, border: opts.ghost ? `1px solid ${ink}` : "none", boxSizing: "border-box", borderRadius: 14, padding: opts.ghost ? "15px 0" : "16px 0", fontFamily: "'DM Mono', monospace", fontSize: 13, letterSpacing: "0.05em", cursor: (opts.disabled || saving) ? "default" : "pointer", marginTop: opts.marginTop ?? 28, marginBottom: 8, opacity: (opts.disabled || saving) ? 0.4 : 1, transition: "opacity 0.2s" }}>
-          {opts.label || (saving ? "Saving..." : "Next")}
+          {opts.label || (saving ? "Saving..." : (!isTodayEntry && step === lastStep ? "Save" : "Next"))}
         </button>
       );
 
@@ -4346,28 +4259,19 @@
           <div style={{ textAlign: "center", marginTop: 16, marginBottom: 28 }}>
             <button onClick={() => setShowAddMood(true)} style={{ background: "none", border: "none", fontFamily: "'DM Mono', monospace", fontSize: 11, color: moss, letterSpacing: "0.04em", cursor: "pointer" }}>+ Add a new mood</button>
           </div>
-          {/* "What's behind it" — moved here from its own step so the
-              Physical step's AI read can take it into account. */}
-          <p style={{ fontFamily: "'Lora', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: 20, lineHeight: 1.4, color: ink, margin: "0 0 12px" }}>What's behind these feelings?</p>
-          <AutoGrowTextarea
-            value={note}
-            onChange={e => setNote(e.target.value)}
-            placeholder="Enter text..."
-            style={{ width: "100%", background: "transparent", border: "none", resize: "none", fontFamily: "'Lora', Georgia, serif", fontSize: 16, color: ink, lineHeight: 1.7, minHeight: 110, outline: "none", display: "block", padding: 0, marginBottom: 20 }}
-          />
           <div style={{ flex: 1 }} />
           {nextBtn({ disabled: entryMoods.length === 0, marginTop: 0 })}
           </div>
         </Shell>
       );
 
-      // ── Step 2 (only when hasPhysical): Physical state ─────────────────
+      // ── Step 3 (only when hasPhysical): Physical state ─────────────────
       // Card-based layout per Figma node 182:1420 — Activity/Sleep/Readiness
       // cards with 3-tier ink/moss/rust pills, plus an AI-generated headline
       // (overarching mindset for the day) and narrative paragraph (explains
       // the scores, translates them into how the user might feel, then
       // suggests what to do about it) — see physicalContent effect above.
-      if (hasPhysical && step === 2) return (
+      if (hasPhysical && step === physicalStep) return (
         <Shell key="checkin-physical">
           {topBar}
           {stepLabel("Your Physical State")}
@@ -4423,74 +4327,36 @@
         </Shell>
       );
 
-      // ── Step: Journal ────────────────────────────────────────────────
-      // Prompt sits in a Bone card (same shape as the Mantra card), with
-      // "Choose a new prompt" under it. The button reads "Skip" (outlined)
-      // while the entry is empty and becomes "Next" once they start typing.
+      // ── Step 2: Journal ─────────────────────────────────────────────
+      // Figma 104:1286 — "What's behind these feelings?" (showing the moods
+      // picked on Step 1) and an optional journal prompt, on one page.
       if (step === journalStep) {
-        const hasJournal = journalText.trim().length > 0;
+        const fieldStyle = { width: "100%", boxSizing: "border-box", background: bone, border: "none", borderRadius: 12, resize: "none", fontFamily: "'Lora', Georgia, serif", fontSize: 14, color: ink, lineHeight: "24px", minHeight: 146, outline: "none", display: "block", padding: 12 };
+        const titleStyle = { fontFamily: "'Lora', Georgia, serif", fontSize: 24, fontWeight: 400, fontStyle: "italic", color: ink, textAlign: "center", textWrap: "balance" };
         return (
-          <Shell key="checkin-3">
+          <Shell key="checkin-journal">
             {topBar}
-            {stepLabel("Journal Prompt")}
-            <div style={{ background: bone, borderRadius: 16, padding: "32px 22px", textAlign: "center" }}>
-              <p style={{ fontFamily: "'Lora', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: 22, lineHeight: 1.4, color: ink, margin: 0, textWrap: "balance" }}>{journalPrompt}</p>
-            </div>
-            <div style={{ textAlign: "center", marginTop: 14, marginBottom: 28 }}>
-              <button onClick={() => setShowPromptPicker(true)} style={{ background: "none", border: "none", fontFamily: "'DM Mono', monospace", fontSize: 11, color: moss, letterSpacing: "0.04em", cursor: "pointer" }}>+ Choose a new prompt</button>
-            </div>
-            <textarea
-              value={journalText}
-              onChange={e => setJournalText(e.target.value)}
-              placeholder="Enter text..."
-              style={{ width: "100%", background: "transparent", border: "none", resize: "none", fontFamily: "'Lora', Georgia, serif", fontSize: 16, color: ink, lineHeight: 1.7, minHeight: 180, outline: "none", display: "block", padding: 0 }}
-            />
-            {nextBtn(hasJournal ? {} : { label: "Skip", ghost: true })}
-          </Shell>
-        );
-      }
-
-      // ── Step: Happy Hour (multi-select) ─────────────────────────────
-      // Options come from what they've typed/chosen before (see
-      // loadHappyHourOptions). New users with no history just get the
-      // write-in field.
-      if (step === happyStep) {
-        const toggleHH = (label) => {
-          hhTouchedRef.current = true;
-          setHhSelected(prev => prev.includes(label) ? prev.filter(l => l !== label) : [...prev, label]);
-        };
-        return (
-          <Shell key="checkin-4">
-            {topBar}
-            {stepLabel("Your Happy Hour")}
-            <h2 style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 26, fontWeight: 400, fontStyle: "italic", color: ink, lineHeight: 1.3, margin: "0 0 28px", textAlign: "center" }}>{happyPrompt}</h2>
-            {hhOptions && hhOptions.length > 0 && (
-              <>
-                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12 }}>Select any</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 28 }}>
-                  {hhOptions.map(label => {
-                    const on = hhSelected.includes(label);
-                    return (
-                      <button key={label} onClick={() => toggleHH(label)}
-                        style={{ border: `1px solid ${on ? ink : shale}`, background: on ? ink : "transparent", color: on ? cream : ink, borderRadius: 999, padding: "9px 14px", fontFamily: "'Lora', Georgia, serif", fontSize: 15, lineHeight: 1.2, cursor: "pointer", transition: "background 0.15s, color 0.15s" }}>
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </>
+            {stepLabel("Journal")}
+            <h2 style={{ ...titleStyle, lineHeight: "44px", margin: "0 0 10px" }}>What’s behind these feelings?</h2>
+            {entryMoods.length > 0 && (
+              <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: 16, marginBottom: 20 }}>
+                {entryMoods.map(m => (
+                  <div key={m.label} style={{ width: 70, textAlign: "center", color: ink }}>
+                    <div style={{ fontSize: 30, lineHeight: "44px" }}>{m.emoji}</div>
+                    <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9 }}>{m.label}</div>
+                  </div>
+                ))}
+              </div>
             )}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", borderBottom: `1px solid ${shale}`, paddingBottom: 8 }}>
-              <input
-                value={hhCustom}
-                maxLength={HH_MAX_CHARS}
-                onChange={e => { hhTouchedRef.current = true; setHhCustom(e.target.value.slice(0, HH_MAX_CHARS)); }}
-                placeholder={hhOptions && hhOptions.length > 0 ? "Something else..." : "Enter text..."}
-                style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", fontFamily: "'Lora', Georgia, serif", fontSize: 16, color: ink, padding: 0 }}
-              />
-              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: moss, marginLeft: 12, flexShrink: 0 }}>{hhCustom.length}/{HH_MAX_CHARS}</span>
+            <AutoGrowTextarea className="fg-journal-field" value={note} onChange={e => setNote(e.target.value)} placeholder="Type here..." style={fieldStyle} />
+            <div style={{ marginTop: 51 }}>{stepLabel("Optional prompt")}</div>
+            <h2 style={{ ...titleStyle, lineHeight: "34px", margin: "0 0 20px" }}>{journalPrompt}</h2>
+            <AutoGrowTextarea className="fg-journal-field" value={journalText} onChange={e => setJournalText(e.target.value)} placeholder="Type here..." style={fieldStyle} />
+            <div style={{ textAlign: "center", marginTop: 20 }}>
+              <button onClick={() => setShowPromptPicker(true)} style={{ background: "none", border: "none", fontFamily: "'DM Mono', monospace", fontSize: 12, color: ink, cursor: "pointer" }}>+ Choose a new journal prompt</button>
             </div>
-            {nextBtn()}
+            <style>{`.fg-journal-field::placeholder { color: ${moss}; opacity: 1; }`}</style>
+            {nextBtn({ marginTop: 20 })}
           </Shell>
         );
       }
@@ -4616,7 +4482,7 @@
       const otherExercises = ALL_EXERCISES.filter(ex => ex.id !== suggestedId);
 
       const [activeEx, setActiveEx] = useS(null);
-      const TOTAL = 6 + dotOffset;
+      const TOTAL = 4 + dotOffset; // Mood, Journal, (Physical), Mantra, Exercise
 
       const makeDots = (current) => (
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -4641,7 +4507,7 @@
           <Shell key="exercise-detail">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32 }}>
               <button style={{ background: "none", border: "none", fontFamily: "'DM Mono', monospace", fontSize: 11, color: moss, letterSpacing: "0.05em", padding: 0, cursor: "pointer" }} onClick={() => setActiveEx(null)}>← back</button>
-              {makeDots(6 + dotOffset)}
+              {makeDots(4 + dotOffset)}
             </div>
             <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.14em", textTransform: "uppercase", textAlign: "center", marginBottom: 14 }}>{activeEx.sub}</div>
             <h2 style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 30, fontWeight: 400, color: ink, margin: "0 0 10px", textAlign: "center" }}>{activeEx.title}</h2>
@@ -4672,7 +4538,7 @@
         <Shell key="exercise-select">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32 }}>
             <button style={{ background: "none", border: "none", fontFamily: "'DM Mono', monospace", fontSize: 11, color: moss, letterSpacing: "0.05em", padding: 0, cursor: "pointer" }} onClick={onBack}>← back</button>
-            {makeDots(5 + dotOffset)}
+            {makeDots(4 + dotOffset)}
           </div>
           <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.14em", textTransform: "uppercase", textAlign: "center", marginBottom: 14 }}>Your Exercises</div>
           <h2 style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 28, fontWeight: 400, fontStyle: "italic", color: ink, margin: "0 0 28px", textAlign: "center" }}>Find your peace today</h2>
@@ -5103,9 +4969,9 @@
       );
     }
 
-    function ProfileView({ name, firstDate, topMoods, streak, longestStreak, totalEntries = 0, journalCount, journalThemes, happyHours, happyHourThemes, exerciseCounts, toolNames, journalTexts, insightTexts, userTraits, userInsecurities, goodDays = 0, hardDays = 0, neutralDays = 0, goodPct = 0, journalDays = [], happyHourDays = [], moodScoreDays = [], likedCount = 0, affirmationTexts = [], noteDays = [], mantraReflectionDays = [], goodPctForSummary = 0, aboutYou = {}, onNavStreaks, onOpenExercise, onBack, onSignOut, onNavSettings, onNavJournals, onNavInsights, onNavMoods, onNavAffirmations, onNavPhysicalHealth, transitionPhase = 'idle', ouraSync, onPullOura }) {
+    function ProfileView({ name, firstDate, topMoods, streak, longestStreak, totalEntries = 0, journalCount, journalThemes, exerciseCounts, toolNames, journalTexts, insightTexts, userTraits, userInsecurities, goodDays = 0, hardDays = 0, neutralDays = 0, goodPct = 0, journalDays = [], moodScoreDays = [], likedCount = 0, affirmationTexts = [], noteDays = [], mantraReflectionDays = [], goodPctForSummary = 0, aboutYou = {}, mantraSet = [], onNavStreaks, onOpenExercise, onBack, onSignOut, onNavSettings, onNavJournals, onNavInsights, onNavMoods, onNavAffirmations, onNavPhysicalHealth, onNavNotifications, transitionPhase = 'idle', ouraSync, onPullOura }) {
       const { useState: useS, useEffect: useE, useMemo: useM } = React;
-      // One combined AI synopsis (replaces the separate journal / happy hour /
+      // One combined AI synopsis (replaces the separate journal /
       // mantra / "who you are" summaries): { text, themes[] }
       const [synopsis, setSynopsis] = useS(null);
       const [synopsisLoading, setSynopsisLoading] = useS(false);
@@ -5200,16 +5066,16 @@
 
       useE(() => {
         // ── Combined AI profile synopsis ───────────────────────────────
-        // Pulls journals, "what's behind it" notes, happy hours, mantras (+
+        // Pulls journals, "what's behind it" notes, mantras (+
         // reflections), moods, recent insights and traits into one summary
         // with themes. Cached by a data fingerprint; a stale cached copy is
         // shown immediately while a fresh one generates.
-        const cacheKey = 'settings:profile_synopsis_v1';
+        const cacheKey = 'settings:profile_synopsis_v2';
         const latest = (arr) => arr[0]?.key || '';
-        const fingerprint = [journalDays.length, noteDays.length, happyHourDays.length, mantraReflectionDays.length, topMoods.length,
-          latest(journalDays), latest(noteDays), latest(happyHourDays), latest(mantraReflectionDays),
+        const fingerprint = [journalDays.length, noteDays.length, mantraReflectionDays.length, topMoods.length,
+          latest(journalDays), latest(noteDays), latest(mantraReflectionDays),
           JSON.stringify([userTraits, userInsecurities, aboutYou]).length, JSON.stringify(aboutYou).slice(0, 200)].join('_');
-        const hasData = journalDays.length || noteDays.length || happyHourDays.length || topMoods.length;
+        const hasData = journalDays.length || noteDays.length || topMoods.length;
         storageGet(cacheKey).then(async cached => {
           if (cached?.text) setSynopsis({ text: cached.text, themes: cached.themes || [] });
           if (cached?.text && cached.fingerprint === fingerprint) return;
@@ -5221,7 +5087,6 @@
             goodPct: goodPctForSummary,
             journals: journalDays.slice(0, 12).map(d => `${fmt(d)}: ${String(d.text).slice(0, 300)}`),
             notes: noteDays.slice(0, 12).map(d => `${fmt(d)}: ${String(d.text).slice(0, 200)}`),
-            happyHours: happyHourDays.slice(0, 12).map(d => `${fmt(d)}: ${String(d.text).slice(0, 150)}`),
             mantras: (affirmationTexts || []).slice(-8),
             mantraReflections: mantraReflectionDays.slice(0, 8).map(d => `"${String(d.mantra).slice(0, 100)}" → ${String(d.text).slice(0, 200)}`),
             insights: (insightTexts || []).slice(0, 5),
@@ -5243,11 +5108,13 @@
         });
       }, []);
 
+      const [mantraIdx, setMantraIdx] = React.useState(0);
+      const outlineBtn = { width: "100%", height: 32, boxSizing: "border-box", background: "none", border: `1px solid ${bone}`, borderRadius: 18, padding: 0, fontFamily: "'DM Mono', monospace", fontSize: 10, color: bone, cursor: "pointer", display: "block" };
       const chipStyle = { background: "none", border: `1px solid ${sage}`, borderRadius: 999, padding: "4px 12px", fontFamily: "'DM Mono', monospace", fontSize: 10, color: bone, letterSpacing: "0.04em", cursor: "default" };
       const cardStyle = { background: moss, borderRadius: 16, padding: 20, marginBottom: 23 };
       const eyebrow = (text, right) => (
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: shale, textTransform: "uppercase" }}>{text}</div>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: shale, textTransform: "uppercase", letterSpacing: "0.12em" }}>{text}</div>
           {right && <button onClick={right.fn} style={{ background: "none", border: "none", fontFamily: "'DM Mono', monospace", fontSize: 9, color: bone, letterSpacing: "0.06em", cursor: "pointer" }}>{right.label}</button>}
         </div>
       );
@@ -5357,7 +5224,7 @@
               return <div style={{ position: "absolute", left: 0, right: 0, top: -78, height: 560, pointerEvents: "none", background: aura, opacity: Math.min(1, glowOpacity / 0.64) }} />;
             })()}
 
-            <div style={{ position: "relative", padding: "36px 44px 28px" }}>
+            <div style={{ position: "relative", padding: "36px 24px 28px" }}>
               {/* Heading */}
               <div style={{ textAlign: "center", marginBottom: 28 }}>
                 <h1 style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 30, fontStyle: "italic", fontWeight: 400, color: cream, margin: "0 0 8px" }}>Hello {name}</h1>
@@ -5377,8 +5244,8 @@
               {(goodDays > 0 || hardDays > 0) && (
                 <>
                   <div style={{ textAlign: "center", lineHeight: 1 }}>
-                    <span style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 92, fontWeight: 500, fontStyle: "italic", color: cream }}>{displayPct}</span>
-                    <span style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 32, fontWeight: 500, fontStyle: "italic", color: cream }}>%</span>
+                    <span style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 100, fontWeight: 400, fontStyle: "italic", color: cream }}>{displayPct}</span>
+                    <span style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 36, fontWeight: 400, fontStyle: "italic", color: cream }}>%</span>
                   </div>
                   <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: bone, letterSpacing: "0.1em", textTransform: "uppercase", textAlign: "center", marginTop: 8, marginBottom: 28 }}>
                     Days feeling good
@@ -5413,8 +5280,8 @@
                       and extending glowSpacerHeight past the bar) visually
                       reaches down this far. */}
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
-                    <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: sage, letterSpacing: "0.04em", textTransform: "uppercase" }}>{goodDays} Good Days</span>
-                    <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: rust, letterSpacing: "0.04em", textTransform: "uppercase" }}>{hardDays} Hard Days</span>
+                    <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: sage }}>{goodDays} Good Days</span>
+                    <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: rust }}>{hardDays} Hard Days</span>
                   </div>
                 </>
               )}
@@ -5426,29 +5293,22 @@
             <div style={{ height: glowSpacerHeight }} />
           </div>
 
-          {/* AI synopsis — Figma 260:125. One combined read of journals,
-              "what's behind it", happy hours and mantras, with themes. */}
-          <div style={{ marginBottom: 23, ...cascade(2) }}>
-            {synopsis ? (
-              <>
-                <p style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 16, fontWeight: 400, lineHeight: "28px", color: cream, margin: 0 }}>{synopsis.text}</p>
-                {synopsis.themes?.length > 0 && (<>
-                  <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: shale, textTransform: "uppercase", marginTop: 28, marginBottom: 12 }}>Recurring themes</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                    {synopsis.themes.map((t, i) => (
-                      <span key={i} style={{ border: "1px solid #97A891", borderRadius: 18, padding: "4px 12px", fontFamily: "'DM Mono', monospace", fontSize: 10, color: cream, lineHeight: "normal" }}>{t}</span>
-                    ))}
-                  </div>
-                </>)}
-              </>
-            ) : (
-              <p style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: bone, opacity: 0.7, margin: 0 }}>
-                {synopsisLoading ? "Reflecting on your data…" : "Check in a few times to see your story here."}
-              </p>
-            )}
+          {/* Stat tiles — Figma 260:69 */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 23, ...cascade(2) }}>
+            {[
+              { label: "Current streak", val: streak, fn: onNavStreaks },
+              { label: "Best streak", val: longestStreak, fn: onNavStreaks },
+              { label: "Total entries", val: totalEntries, fn: onNavMoods },
+            ].map(t => (
+              <button key={t.label} onClick={t.fn || undefined} disabled={!t.fn}
+                style={{ background: moss, border: "none", borderRadius: 16, height: 96, padding: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, cursor: t.fn ? "pointer" : "default", color: "inherit" }}>
+                <div style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 36, fontStyle: "italic", fontWeight: 500, color: bone, lineHeight: "24px", paddingTop: 6 }}>{t.val}</div>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 8, color: shale, letterSpacing: "0.12em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{t.label}</div>
+              </button>
+            ))}
           </div>
 
-          {/* Most common moods — Figma 260:92 */}
+          {/* Most common moods */}
           <div style={{ ...cardStyle, ...cascade(3) }}>
             <div style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 16, color: bone, textAlign: "center" }}>Most often, you feel...</div>
             {topMoods.length > 0 ? (
@@ -5463,39 +5323,60 @@
             ) : (
               <p style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: bone, textAlign: "center", marginTop: 32, marginBottom: 0 }}>Check in a few times to see your top moods</p>
             )}
-            <div style={{ textAlign: "center", marginTop: 32 }}>
-              <button onClick={onNavMoods} style={{ background: "none", border: `1px solid ${bone}`, borderRadius: 18, padding: "6px 21px", fontFamily: "'DM Mono', monospace", fontSize: 10, color: bone, cursor: "pointer" }}>
-                See all moods
-              </button>
-            </div>
+            <button onClick={onNavMoods} style={{ ...outlineBtn, marginTop: 32 }}>See all moods</button>
           </div>
 
-          {/* Stat tiles — Figma 260:427 (replaces the Journals / Mantras / Happy Hour / Insights cards) */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 23, ...cascade(4) }}>
-            {[
-              { label: "Current streak", val: streak, fn: onNavStreaks },
-              { label: "Longest streak", val: longestStreak, fn: onNavStreaks },
-              { label: "Total entries", val: totalEntries, fn: onNavMoods },
-              { label: "Journals", val: journalDays.length, fn: onNavJournals },
-              { label: "Mantras", val: likedCount, fn: onNavAffirmations },
-              { label: "Happy hours", val: happyHourDays.length, fn: null },
-            ].map(t => (
-              <button key={t.label} onClick={t.fn || undefined} disabled={!t.fn}
-                style={{ background: moss, border: "none", borderRadius: 14, padding: 16, aspectRatio: "1 / 1", display: "flex", alignItems: "center", justifyContent: "center", cursor: t.fn ? "pointer" : "default", color: "inherit" }}>
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                  <div style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 36, color: bone, lineHeight: 1 }}>{t.val}</div>
-                  <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: shale, letterSpacing: "0.1em", textTransform: "uppercase", textAlign: "center" }}>{t.label}</div>
-                </div>
-              </button>
-            ))}
+          {/* Journal summary — one combined AI read of journals, "what's
+              behind it" and mantras, with themes. */}
+          <div style={{ ...cardStyle, ...cascade(4) }}>
+            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: shale, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 24 }}>Journal summary</div>
+            {synopsis ? (
+              <>
+                <p style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 16, fontWeight: 400, lineHeight: "28px", color: cream, margin: 0 }}>{synopsis.text}</p>
+                {synopsis.themes?.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 24 }}>
+                    {synopsis.themes.map((t, i) => (
+                      <span key={i} style={{ border: "1px solid #97A891", borderRadius: 18, padding: "4px 12px", fontFamily: "'DM Mono', monospace", fontSize: 10, color: cream, lineHeight: "normal" }}>{t}</span>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <p style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: bone, opacity: 0.7, margin: 0 }}>
+                {synopsisLoading ? "Reflecting on your data…" : "Check in a few times to see your story here."}
+              </p>
+            )}
+            <button onClick={onNavJournals} style={{ ...outlineBtn, marginTop: 36 }}>See all journal entries</button>
           </div>
+
+          {/* Mantras — flip through your set */}
+          {(() => {
+            const n = mantraSet.length;
+            const m = n ? mantraSet[((mantraIdx % n) + n) % n] : null;
+            const circle = { width: 32, height: 32, flexShrink: 0, borderRadius: 16, border: `1px solid ${sage}`, background: "transparent", color: cream, fontFamily: "'DM Mono', monospace", fontSize: 16, lineHeight: 1, padding: 0, cursor: "pointer" };
+            return (
+              <div style={{ ...cardStyle, minHeight: 261, boxSizing: "border-box", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 32, ...cascade(5) }}>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: shale, textTransform: "uppercase", textAlign: "center" }}>Mantras</div>
+                {m ? (
+                  <p key={mantraIdx} style={{ fontFamily: "'Lora', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: 18, lineHeight: "30px", color: "#fff", textAlign: "center", textWrap: "balance", maxWidth: 298, margin: 0, animation: "dissolveScaleIn 300ms ease both" }}>{m.text}</p>
+                ) : (
+                  <p style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: bone, opacity: 0.7, textAlign: "center", margin: 0 }}>Add a few mantras to get started.</p>
+                )}
+                <div style={{ width: "100%", display: "flex", alignItems: "center", gap: 12 }}>
+                  {n > 1 && <button aria-label="Previous mantra" onClick={() => setMantraIdx(i => i - 1)} style={circle}>‹</button>}
+                  <button onClick={onNavAffirmations} style={{ ...outlineBtn, flex: 1, border: `1px solid ${sage}`, color: cream }}>See all mantras</button>
+                  {n > 1 && <button aria-label="Next mantra" onClick={() => setMantraIdx(i => i + 1)} style={circle}>›</button>}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Physical Data card — disconnected (Figma 232:2303) vs connected (Figma 232:2345) */}
-          <div style={{ ...cardStyle, ...cascade(5) }}>
+          <div style={{ ...cardStyle, ...cascade(6) }}>
             {eyebrow("Physical Data")}
             {ouraConnected === true ? (
               <>
-                <p style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 15, color: bone, lineHeight: 1.7, margin: "0 0 16px" }}>
+                <p style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 14, color: cream, lineHeight: "24px", margin: "4px 0 16px" }}>
                   {physicalTrend || "Keep checking in — once we have a bit more overlapping data, we'll show you how your physical and emotional health track together."}
                 </p>
                 {pairedScoreDays.length >= 2 ? (
@@ -5515,12 +5396,7 @@
                     <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: shale }}>Logged moods</span>
                   </div>
                 </div>
-                <button
-                  onClick={onNavPhysicalHealth}
-                  style={{ width: "100%", background: "none", border: `1px solid ${bone}`, borderRadius: 999, padding: "10px 0", fontFamily: "'DM Mono', monospace", fontSize: 10, color: bone, letterSpacing: "0.04em", cursor: "pointer" }}
-                >
-                  View more
-                </button>
+                <button onClick={onNavPhysicalHealth} style={outlineBtn}>Manage Physical Health Connections</button>
               </>
             ) : (
               <>
@@ -5541,7 +5417,7 @@
           {/* Exercises — every exercise with its usage bar, most → least used.
               Sorted on each render, so the order follows the counts as they
               change. Tapping a name opens that exercise. */}
-          <div style={{ ...cardStyle, ...cascade(6) }}>
+          <div style={{ ...cardStyle, ...cascade(7) }}>
             {eyebrow("Exercises")}
             {(() => {
               const rows = exKeys
@@ -5570,10 +5446,10 @@
             })()}
           </div>
 
-          {/* Daily reminder — web push nudge to check in */}
-          <DailyReminderCard style={{ ...cardStyle, ...cascade(7) }} eyebrow={eyebrow} />
+          {/* Notifications — summary; settings live on their own page */}
+          <NotificationsCard style={{ ...cardStyle, ...cascade(8) }} eyebrow={eyebrow} onOpen={onNavNotifications} buttonStyle={outlineBtn} />
 
-          <div style={{ textAlign: "center", marginTop: 11, marginBottom: 24, ...cascade(8) }}>
+          <div style={{ textAlign: "center", marginTop: 11, marginBottom: 24, ...cascade(9) }}>
             <button onClick={onNavSettings} style={{ background: "none", border: "none", fontFamily: "'DM Mono', monospace", fontSize: 12, color: cream, cursor: "pointer", padding: 0 }}>
               Edit your profile settings
             </button>
@@ -6428,9 +6304,8 @@
 
     // ─── Daily reminder (web push) ────────────────────────────────────
     // Each device saves a push subscription to Supabase (push_subscriptions).
-    // A Supabase Edge Function runs every 15 min and sends the nudge to
-    // devices whose local reminder time just passed, skipping days that
-    // already have a check-in. See "Web Push Notifications with Supabase".
+    // A Supabase Edge Function runs every 15 min and sends the check-in nudge
+    // and mantra reminders (see NotificationsView). See "Web Push Notifications with Supabase".
     const VAPID_PUBLIC_KEY = 'BKrFDaB-BAq0O0B-y1RjWQaNfwL9CuVOwnUPy8zDnuTVeMB0HlESLcsqUAnYAywXzXY-tdxVAr9LQCT6vN9O1-I';
     const vapidKeyBytes = (s) => Uint8Array.from(atob((s + '='.repeat((4 - s.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
     const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
@@ -6447,112 +6322,177 @@
       return reg ? reg.pushManager.getSubscription() : null;
     }
 
-    function DailyReminderCard({ style, eyebrow }) {
-      const { useState: useS, useEffect: useE } = React;
-      const [status, setStatus] = useS('checking'); // checking | off | on | busy
-      const [time, setTime] = useS('20:00');
-      const [note, setNote] = useS(null);
+    // Notification settings live on push_subscriptions (one row per device):
+    // notify_time + nudge_enabled for the daily check-in nudge, mantra_enabled
+    // + mantra_times for "today's mantra" (sent only after a check-in). The
+    // daily-checkin Edge Function reads these every 15 min.
+    const DEFAULT_MANTRA_TIMES = ['12:00', '17:00', '22:00'];
+    const MANTRA_TIMES_MAX = 5;
+    const NOTIF_OFF = { subscribed: false, nudgeOn: false, nudgeTime: '09:00', mantraOn: false, mantraTimes: DEFAULT_MANTRA_TIMES };
 
-      useE(() => {
-        (async () => {
-          try {
-            const sub = await getPushSub();
-            if (sub && Notification.permission === 'granted') {
-              const { data } = await supabaseClient.from('push_subscriptions').select('notify_time').eq('endpoint', sub.endpoint).maybeSingle();
-              if (data?.notify_time) setTime(data.notify_time);
-              setStatus(data ? 'on' : 'off');
-            } else setStatus('off');
-          } catch { setStatus('off'); }
-        })();
-      }, []);
-
-      async function saveSub(sub, t) {
-        const json = sub.toJSON();
-        const { error } = await supabaseClient.from('push_subscriptions').upsert({
-          endpoint: json.endpoint, user_id: currentUserId, sub: json,
-          tz: Intl.DateTimeFormat().resolvedOptions().timeZone, notify_time: t,
-        });
-        if (error) throw error;
-      }
-
-      async function turnOn() {
-        setNote(null);
-        if (!pushSupported()) {
-          setNote(isIOSDevice() && !isInstalledApp()
-            ? 'Add Feel Good to your Home Screen (Share → Add to Home Screen), then turn this on from there.'
-            : "This browser can't receive notifications.");
-          return;
+    async function loadNotifSettings() {
+      try {
+        const sub = await getPushSub();
+        if (!sub || Notification.permission !== 'granted') return NOTIF_OFF;
+        let { data, error } = await supabaseClient.from('push_subscriptions')
+          .select('notify_time, nudge_enabled, mantra_enabled, mantra_times').eq('endpoint', sub.endpoint).maybeSingle();
+        if (error) { // columns not added yet — fall back to the original shape
+          ({ data } = await supabaseClient.from('push_subscriptions').select('notify_time').eq('endpoint', sub.endpoint).maybeSingle());
+          if (data) data = { ...data, nudge_enabled: true, mantra_enabled: true, mantra_times: DEFAULT_MANTRA_TIMES };
         }
-        if (isIOSDevice() && !isInstalledApp()) {
-          setNote('Add Feel Good to your Home Screen (Share → Add to Home Screen), then turn this on from there.');
-          return;
-        }
-        setStatus('busy');
-        try {
-          const perm = await Notification.requestPermission();
-          if (perm !== 'granted') {
-            setNote('Notifications are blocked for Feel Good. Turn them on in your phone’s Settings → Notifications.');
-            setStatus('off');
-            return;
-          }
-          const reg = await navigator.serviceWorker.ready;
-          const sub = (await reg.pushManager.getSubscription())
-            || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: vapidKeyBytes(VAPID_PUBLIC_KEY) });
-          await saveSub(sub, time);
-          setStatus('on');
-        } catch (e) {
-          setNote("Couldn't turn on reminders. Try again in a moment.");
-          setStatus('off');
-        }
-      }
+        if (!data) return NOTIF_OFF;
+        return {
+          subscribed: true,
+          nudgeOn: data.nudge_enabled !== false, nudgeTime: data.notify_time || '09:00',
+          mantraOn: data.mantra_enabled !== false,
+          mantraTimes: Array.isArray(data.mantra_times) && data.mantra_times.length ? data.mantra_times : DEFAULT_MANTRA_TIMES,
+        };
+      } catch { return NOTIF_OFF; }
+    }
 
-      async function turnOff() {
-        setNote(null);
-        setStatus('busy');
-        try {
-          const sub = await getPushSub();
-          if (sub) {
-            await supabaseClient.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
-            await sub.unsubscribe();
-          }
-        } catch { /* fall through */ }
-        setStatus('off');
-      }
+    const fmtClock = (t) => { const [h, m] = String(t).split(':').map(Number); return `${((h + 11) % 12) + 1}:${String(m || 0).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };
 
-      async function changeTime(t) {
-        if (!t) return;
-        setTime(t);
-        if (status !== 'on') return;
-        try {
-          const sub = await getPushSub();
-          if (sub) await supabaseClient.from('push_subscriptions').update({ notify_time: t, tz: Intl.DateTimeFormat().resolvedOptions().timeZone }).eq('endpoint', sub.endpoint);
-        } catch { /* silent */ }
-      }
-
-      const on = status === 'on';
-      const busy = status === 'busy' || status === 'checking';
+    // ── Profile tile: summary + "Update notifications" ──
+    function NotificationsCard({ style, eyebrow, onOpen, buttonStyle }) {
+      const [st, setSt] = React.useState(null);
+      React.useEffect(() => { loadNotifSettings().then(setSt); }, []);
+      const nudge = st ? (st.subscribed && st.nudgeOn ? 'On' : 'Off') : '…';
+      const mantra = st ? (st.subscribed && st.mantraOn ? 'On' : 'Off') : '…';
       return (
         <div style={style}>
-          {eyebrow("Daily Reminder")}
-          <p style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 15, color: bone, lineHeight: 1.7, margin: "0 0 16px" }}>
-            {on
-              ? "We’ll nudge this device to check in each day. If you’ve already checked in, we’ll stay quiet."
-              : "Get a gentle nudge on this device to check in each day. It’s skipped on days you’ve already checked in."}
+          {eyebrow("Notifications")}
+          <p style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 15, color: bone, lineHeight: 1.7, margin: "0 0 20px" }}>
+            Daily nudge: {nudge}<br />Mantra reminders: {mantra}
           </p>
-          <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid rgba(255,255,255,0.15)", borderBottom: "1px solid rgba(255,255,255,0.15)", padding: "10px 0", marginBottom: 16 }}>
-            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: shale, letterSpacing: "0.04em" }}>Remind me at</span>
-            <input type="time" value={time} onChange={(e) => changeTime(e.target.value)}
-              style={{ background: "none", border: "none", fontFamily: "'Lora', Georgia, serif", fontSize: 15, fontStyle: "italic", color: bone, textAlign: "right", colorScheme: "dark", padding: 0 }} />
-          </label>
-          {note && <p style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: shale, lineHeight: 1.6, margin: "0 0 14px" }}>{note}</p>}
-          <button
-            onClick={on ? turnOff : turnOn}
-            disabled={busy}
-            style={{ width: "100%", background: "none", border: `1px solid ${bone}`, borderRadius: 999, padding: "10px 0", fontFamily: "'DM Mono', monospace", fontSize: 10, color: bone, letterSpacing: "0.04em", cursor: busy ? "default" : "pointer", opacity: busy ? 0.5 : 1 }}
-          >
-            {status === 'checking' ? "Checking…" : status === 'busy' ? "One moment…" : on ? "Turn off" : "Turn on"}
-          </button>
+          <button onClick={onOpen} style={buttonStyle}>Update notifications</button>
         </div>
+      );
+    }
+
+    function NotifSwitch({ on, onChange, disabled, label }) {
+      return (
+        <button role="switch" aria-checked={on} aria-label={label} disabled={disabled} onClick={() => onChange(!on)}
+          style={{ width: 46, height: 28, borderRadius: 14, border: "none", padding: 3, flexShrink: 0, cursor: disabled ? "default" : "pointer",
+            background: on ? sage : "rgba(255,255,255,0.18)", opacity: disabled ? 0.5 : 1, transition: "background .2s", display: "flex", justifyContent: on ? "flex-end" : "flex-start" }}>
+          <span style={{ width: 22, height: 22, borderRadius: 11, background: cream, display: "block" }} />
+        </button>
+      );
+    }
+
+    // ── Full page: toggle each type and set its times ──
+    function NotificationsView({ onBack }) {
+      const { useState: useS, useEffect: useE } = React;
+      const [st, setSt] = useS(null);   // null while loading
+      const [busy, setBusy] = useS(false);
+      const [note, setNote] = useS(null);
+      useE(() => { loadNotifSettings().then(setSt); }, []);
+
+      const rowFor = (s) => ({ notify_time: s.nudgeTime, nudge_enabled: s.nudgeOn, mantra_enabled: s.mantraOn, mantra_times: s.mantraTimes,
+        tz: Intl.DateTimeFormat().resolvedOptions().timeZone });
+
+      // Make sure this device can receive pushes; returns the subscription or null (with a note shown).
+      async function ensureSub() {
+        const home = 'Add Feel Good to your Home Screen (Share → Add to Home Screen), then turn notifications on from there.';
+        if (!pushSupported()) { setNote(isIOSDevice() && !isInstalledApp() ? home : "This browser can't receive notifications."); return null; }
+        if (isIOSDevice() && !isInstalledApp()) { setNote(home); return null; }
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') { setNote('Notifications are blocked for Feel Good. Turn them on in your phone’s Settings → Notifications.'); return null; }
+        const reg = await navigator.serviceWorker.ready;
+        return (await reg.pushManager.getSubscription())
+          || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: vapidKeyBytes(VAPID_PUBLIC_KEY) });
+      }
+
+      async function apply(patch) {
+        const next = { ...st, ...patch };
+        if (next.mantraTimes) next.mantraTimes = [...new Set(next.mantraTimes.filter(Boolean))].sort();
+        const prev = st;
+        setSt(next); setNote(null); setBusy(true);
+        try {
+          const anyOn = next.nudgeOn || next.mantraOn;
+          if (!anyOn) {
+            // Both off: forget this device entirely.
+            const sub = await getPushSub();
+            if (sub) { await supabaseClient.from('push_subscriptions').delete().eq('endpoint', sub.endpoint); await sub.unsubscribe(); }
+            setSt({ ...next, subscribed: false });
+          } else if (!prev.subscribed) {
+            const sub = await ensureSub();
+            if (!sub) { setSt(prev); return; }
+            const json = sub.toJSON();
+            const { error } = await supabaseClient.from('push_subscriptions').upsert({ endpoint: json.endpoint, user_id: currentUserId, sub: json, ...rowFor(next) });
+            if (error) throw error;
+            setSt({ ...next, subscribed: true });
+          } else {
+            const sub = await getPushSub();
+            if (!sub) { setSt({ ...prev, subscribed: false }); setNote('This device lost its notification permission — turn a notification on again.'); return; }
+            const { error } = await supabaseClient.from('push_subscriptions').update(rowFor(next)).eq('endpoint', sub.endpoint);
+            if (error) throw error;
+          }
+        } catch (e) {
+          setSt(prev);
+          setNote("Couldn't save that change. Try again in a moment.");
+        } finally { setBusy(false); }
+      }
+
+      const mono = "'DM Mono', monospace", serif = "'Lora', Georgia, serif";
+      const card = { background: ink, borderRadius: 16, padding: 20, marginBottom: 16 };
+      const head = (title, on, onToggle) => (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, marginBottom: 8 }}>
+          <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 20, color: cream }}>{title}</div>
+          <NotifSwitch on={on} onChange={onToggle} disabled={busy || !st} label={title} />
+        </div>
+      );
+      const desc = (t) => <p style={{ fontFamily: serif, fontSize: 14, lineHeight: "22px", color: shale, margin: 0 }}>{t}</p>;
+      const timeRow = (label, value, onChange, onRemove) => (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, borderTop: "1px solid rgba(255,255,255,0.12)", padding: "12px 0" }}>
+          <span style={{ flex: 1, fontFamily: mono, fontSize: 10, color: sage, letterSpacing: "0.04em" }}>{label}</span>
+          <input type="time" value={value} onChange={(e) => e.target.value && onChange(e.target.value)} disabled={busy}
+            style={{ background: "none", border: "none", fontFamily: serif, fontSize: 16, fontStyle: "italic", color: cream, textAlign: "right", colorScheme: "dark", padding: 0 }} />
+          {onRemove && <button onClick={onRemove} disabled={busy} aria-label="Remove time" style={{ background: "none", border: "none", fontFamily: mono, fontSize: 13, color: sage, cursor: "pointer", padding: 0 }}>✕</button>}
+        </div>
+      );
+
+      const nudgeOn = !!(st && st.subscribed && st.nudgeOn), mantraOn = !!(st && st.subscribed && st.mantraOn);
+      return (
+        <Shell key="notifications">
+          <button style={s.backBtn} onClick={onBack}>← back</button>
+          <h2 style={s.pageTitle}>Notifications</h2>
+          {!st ? <p style={s.dimMono}>Checking…</p> : (
+            <>
+              <div style={card}>
+                {head("Daily nudge", nudgeOn, (v) => apply({ nudgeOn: v, mantraOn: st.subscribed ? st.mantraOn : false }))}
+                {desc("A reminder to check in. Skipped on days you’ve already checked in.")}
+                {nudgeOn && <div style={{ marginTop: 14 }}>{timeRow("Remind me at", st.nudgeTime, (t) => apply({ nudgeTime: t }))}</div>}
+              </div>
+
+              <div style={card}>
+                {head("Mantra reminders", mantraOn, (v) => apply({ mantraOn: v, nudgeOn: st.subscribed ? st.nudgeOn : false }))}
+                {desc("Your mantra for the day, sent only after you’ve checked in.")}
+                {mantraOn && (
+                  <div style={{ marginTop: 14 }}>
+                    {st.mantraTimes.map((t, i) => timeRow(`Reminder ${i + 1}`, t,
+                      (v) => apply({ mantraTimes: st.mantraTimes.map((x, j) => j === i ? v : x) }),
+                      st.mantraTimes.length > 1 ? () => apply({ mantraTimes: st.mantraTimes.filter((_, j) => j !== i) }) : null))}
+                    {st.mantraTimes.length < MANTRA_TIMES_MAX && (
+                      <button disabled={busy} onClick={() => {
+                          const used = new Set(st.mantraTimes);
+                          const pick = ['08:00', '10:00', '12:00', '14:00', '15:00', '17:00', '19:00', '20:00', '22:00'].find(t => !used.has(t)) || '20:00';
+                          apply({ mantraTimes: [...st.mantraTimes, pick] });
+                        }}
+                        style={{ width: "100%", background: "none", border: "1px dashed rgba(160,174,156,0.6)", borderRadius: 14, padding: "10px 0", marginTop: 6, fontFamily: mono, fontSize: 10, color: sage, cursor: "pointer" }}>
+                        + Add a time
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {note && <p style={{ fontFamily: mono, fontSize: 11, color: rust, lineHeight: 1.6, margin: "4px 0 0" }}>{note}</p>}
+              <p style={{ fontFamily: mono, fontSize: 10, color: moss, lineHeight: 1.6, marginTop: 20 }}>
+                These settings are for this device. Times use your phone’s time zone.
+              </p>
+            </>
+          )}
+        </Shell>
       );
     }
 
