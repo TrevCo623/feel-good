@@ -2792,6 +2792,16 @@
 
     // ─── Sub-components ───────────────────────────────────────────────
     function Shell({ children, background, glow }) {
+      // iOS tints the status-bar area from the page's own background (html/body),
+      // not from this div — so a dark page (Profile) got a pale cream fade at the
+      // top. Keep html/body and theme-color matched to whichever page is showing.
+      useEffect(() => {
+        const bg = background || cream;
+        document.documentElement.style.backgroundColor = bg;
+        document.body.style.backgroundColor = bg;
+        const meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', bg);
+      }, [background]);
       useEffect(() => {
         // Scroll to top — fire immediately and again to beat sparkline scrollLeft
         window.scrollTo(0, 0);
@@ -5179,7 +5189,7 @@
         <Shell key="profile" background={ink}>
         <div style={{ animation: profileExitAnim }}>
           {/* Top nav */}
-          <div style={{ height: 30, marginBottom: 0, display: "flex", alignItems: "center", justifyContent: "space-between", ...cascade(0) }}>
+          <div style={{ height: 30, marginTop: 12, marginBottom: 0, display: "flex", alignItems: "center", justifyContent: "space-between", ...cascade(0) }}>
             <button style={{ ...s.backBtn, color: shale, padding: 0 }} onClick={onBack}>← back</button>
             <button style={{ ...s.backBtn, color: shale, padding: 0 }} onClick={onNavSettings}>Settings</button>
           </div>
@@ -5398,13 +5408,18 @@
             const m = n ? mantraSet[((mantraIdx % n) + n) % n] : null;
             const circle = { width: 32, height: 32, flexShrink: 0, borderRadius: 16, border: `1px solid ${sage}`, background: "transparent", color: cream, fontFamily: "'DM Mono', monospace", fontSize: 16, lineHeight: 1, padding: 0, cursor: "pointer" };
             return (
-              <div style={{ ...cardStyle, minHeight: 261, boxSizing: "border-box", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 32, ...cascade(6) }}>
+              <div style={{ ...cardStyle, height: 261, boxSizing: "border-box", display: "flex", flexDirection: "column", alignItems: "center", ...cascade(6) }}>
                 <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: shale, textTransform: "uppercase", textAlign: "center" }}>Mantras</div>
-                {m ? (
-                  <p key={mantraIdx} style={{ fontFamily: "'Lora', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: 18, lineHeight: "30px", color: "#fff", textAlign: "center", textWrap: "balance", maxWidth: 298, margin: 0, animation: "dissolveScaleIn 300ms ease both" }}>{m.text}</p>
-                ) : (
-                  <p style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: bone, opacity: 0.7, textAlign: "center", margin: 0 }}>Add a few mantras to get started.</p>
-                )}
+                {/* Eyebrow and buttons stay put; the mantra sits centred between
+                    them and is cut to 3 lines with an ellipsis if it's long. */}
+                <div style={{ flex: 1, minHeight: 0, width: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {m ? (
+                    <p key={mantraIdx} style={{ fontFamily: "'Lora', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: 18, lineHeight: "30px", color: "#fff", textAlign: "center", textWrap: "balance", maxWidth: 298, margin: 0,
+                      display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden", animation: "dissolveScaleIn 300ms ease both" }}>{m.text}</p>
+                  ) : (
+                    <p style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: bone, opacity: 0.7, textAlign: "center", margin: 0 }}>Add a few mantras to get started.</p>
+                  )}
+                </div>
                 <div style={{ width: "100%", display: "flex", alignItems: "center", gap: 12 }}>
                   {n > 1 && <button aria-label="Previous mantra" onClick={() => setMantraIdx(i => i - 1)} style={circle}>‹</button>}
                   <button onClick={onNavAffirmations} style={{ ...outlineBtn, flex: 1, border: `1px solid ${sage}`, color: cream }}>See all mantras</button>
