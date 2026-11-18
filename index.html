@@ -1014,6 +1014,7 @@
       const [insecurities, setInsecurities] = useState(DEFAULT_INSECURITIES);
       const [affirmation, setAffirmation] = useState(null);
       const [ratings, setRatings] = useState({ liked: [], disliked: [] });
+      const [mantraAI, setMantraAI] = useState(true); // AI-suggested mantras — on unless the user turned it off
       const [practiceAff, setPracticeAff] = useState(null);
       const [mantraSet, setMantraSet] = useState(null);   // your personal ~10 mantras: [{ idx, text }]
       const [mantraRows, setMantraRows] = useState([]);
@@ -1184,6 +1185,7 @@
           else setAffirmation(cachedAff);
         }
         // Personal mantra set (seeded once from hearted + built-in mantras).
+        storageGet('settings:mantra_ai').then(v => { if (v === false) setMantraAI(false); }).catch(() => {});
         storageGet('settings:mantra_practice_log').then(v => { if (v && typeof v === 'object') setMantraPracticeLog(v); }).catch(() => {});
         Promise.all([storageGet('settings:mantra_set'), sbList('affirmations', 'date_key,body,idx')]).then(async ([storedSet, aRowsAll]) => {
           const rowsAll = Array.isArray(aRowsAll) ? aRowsAll : [];
@@ -1356,7 +1358,35 @@
         setMantraSet(next);
         await storageSet('settings:mantra_set', next);
       }
-      async function pickMantra(dayKey, m) {
+      // Hearts live on the mantra-set items (m.liked). Older hearts (from the
+      // Home mantra card) are in ratings.liked by idx — honoured until the
+      // mantra is hearted/un-hearted again here.
+      const legacyLikedMantras = new Set(ratings.liked || []);
+      const isMantraLiked = (m) => {
+        if (!m) return false;
+        const inSet = (mantraSet || []).find(x => normMantra(x.text) === normMantra(m.text));
+        if (!inSet) return !!m.isNew; // a new AI suggestion counts as hearted once you pick it
+        return inSet.liked === true || (inSet.liked === undefined && legacyLikedMantras.has(inSet.idx));
+      };
+      const newMantraIdx = () => 20000 + (Date.now() % 100000000);
+      async function toggleMantraLike(m) {
+        const set = mantraSet || [];
+        const i = set.findIndex(x => normMantra(x.text) === normMantra(m.text));
+        if (i < 0) { await saveMantraSet([...set, { idx: newMantraIdx(), text: m.text, source: 'ai', liked: !m.isNew }]); return; }
+        const liked = !isMantraLiked(set[i]);
+        await saveMantraSet(set.map((x, j) => j === i ? { ...x, liked } : x));
+      }
+      async function setMantraAIPref(v) {
+        setMantraAI(v);
+        await storageSet('settings:mantra_ai', v);
+      }
+      async function pickMantra(dayKey, m0) {
+        // Picking today's new AI mantra adds it to your set for good (hearted).
+        let m = m0;
+        const set = mantraSet || [];
+        const existing = set.find(x => normMantra(x.text) === normMantra(m0.text));
+        if (existing) m = existing;
+        else { m = { idx: newMantraIdx(), text: m0.text, source: 'ai', liked: true }; await saveMantraSet([...set, m]); }
         const aff = { text: m.text, idx: m.idx ?? 0 };
         await storageSet(`affirmation:${dayKey}`, aff);
         if (dayKey === todayKey) setAffirmation(aff);
@@ -1969,7 +1999,8 @@
       // ─── AFFIRMATION HISTORY VIEW ──────────────────────────────────
       if (view === "affirmation-history") {
         return <MantraLibraryView items={mantraSet} practicedFor={mantraPracticedFor} onBack={goBackView}
-          onSaveSet={saveMantraSet} onSuggest={suggestMantra} onPracticed={logMantraPractice} />;
+          onSaveSet={saveMantraSet} onSuggest={suggestMantra} onPracticed={logMantraPractice}
+          aiOn={mantraAI} onToggleAI={setMantraAIPref} isLiked={isMantraLiked} onToggleLike={toggleMantraLike} />;
       }
 
       if (view === "notifications") {
@@ -2331,6 +2362,11 @@
             onSaveMantraSet={saveMantraSet}
             onSuggestMantra={suggestMantra}
             onPickMantra={pickMantra}
+            mantraAI={mantraAI}
+            onToggleMantraAI={setMantraAIPref}
+            isMantraLiked={isMantraLiked}
+            onToggleMantraLike={toggleMantraLike}
+            getAboutYou={aboutYouPayload}
             customPrompts={customPrompts}
             onSaveCustomPrompts={async (next) => {
               setCustomPrompts(next);
@@ -2687,7 +2723,7 @@
 
           {/* Trends — "The past few days" + "Something to think about", in a Bone tile */}
           {(insight || insightLoading || insightDismissing) && (
-            <div style={{ background: bone, borderRadius: 16, padding: 20, marginBottom: 32, ...anim(0.42) }}>
+            <div style={{ background: bone, borderRadius: 16, padding: 20, marginBottom: 16, ...anim(0.42) }}>
               {insightLoading && !insight
                 ? <>
                     <p style={{ fontFamily: "'Lora', serif", fontSize: 18, fontStyle: 'italic', color: 'rgba(44,59,42,0.25)', lineHeight: '24px', margin: '0 0 16px' }}>The past few days</p>
@@ -2744,25 +2780,9 @@
                 {affirmation && (
             <div style={{ background: ink, borderRadius: 16, padding: '20px 22px 22px', textAlign: 'center' }}>
               <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: sage, letterSpacing: "0.12em", textTransform: 'uppercase', marginBottom: 16 }}>Mantra</div>
-              <p style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 20, fontStyle: 'italic', color: 'rgba(255,255,255,0.92)', lineHeight: 1.6, margin: '0 0 24px' }}>
+              <p style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 20, fontStyle: 'italic', color: 'rgba(255,255,255,0.92)', lineHeight: 1.6, margin: 0 }}>
                 {affirmation.text}
               </p>
-              <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
-                {/* Heart — like/unlike */}
-                {(() => {
-                  const isLiked = (ratings.liked || []).includes(affirmation.idx);
-                  return (
-                    <button
-                      onClick={() => rateAffirmation(true)}
-                      title={isLiked ? 'Unlike' : 'Like'}
-                      style={{ background: 'none', border: '1px solid rgba(255,255,255,0.22)', borderRadius: 999, padding: 0, width: 96, height: 44, color: isLiked ? '#C4783A' : 'rgba(255,255,255,0.6)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color 0.15s' }}>
-                      <svg width="12" height="13" viewBox="0 0 8 9" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
-                        <path d="M3.69906 9C3.59039 8.72462 3.47753 8.4701 3.3605 8.23644C3.25183 7.99444 3.1139 7.73574 2.94671 7.46036C2.77952 7.18498 2.57053 6.8637 2.31975 6.49652C2.06897 6.12935 1.75131 5.68289 1.36677 5.15716C0.873563 4.48122 0.522466 3.90125 0.31348 3.41725C0.104493 2.93324 0 2.46175 0 2.00278C0 1.63561 0.091954 1.30181 0.275862 1.00139C0.46813 0.692628 0.718913 0.450626 1.02821 0.275383C1.34587 0.0917942 1.68861 0 2.05643 0C2.44932 0 2.81296 0.100139 3.14734 0.300417C3.49007 0.500696 3.77011 0.805285 3.98746 1.21419C4.21317 0.805285 4.49739 0.500696 4.84013 0.300417C5.18286 0.100139 5.55068 0 5.94357 0C6.30303 0 6.63741 0.0917942 6.94671 0.275383C7.26437 0.450626 7.51933 0.692628 7.7116 1.00139C7.90387 1.30181 8 1.63561 8 2.00278C8 2.29485 7.9582 2.59527 7.87461 2.90403C7.79937 3.20445 7.66144 3.53825 7.46082 3.90542C7.26019 4.26426 6.98433 4.68567 6.63323 5.16968C6.24869 5.70376 5.92685 6.15855 5.66771 6.53408C5.40857 6.90125 5.1954 7.22253 5.02821 7.49791C4.86938 7.7733 4.73145 8.02782 4.61442 8.26147C4.49739 8.49513 4.38871 8.74131 4.2884 9H3.69906ZM3.98746 7.91099C4.14629 7.59388 4.35946 7.2267 4.62696 6.80946C4.90282 6.39221 5.22466 5.92907 5.59248 5.42003C5.96029 4.91099 6.26123 4.47288 6.4953 4.1057C6.72936 3.73853 6.89655 3.44645 6.99687 3.22949C7.19749 2.7872 7.29781 2.3783 7.29781 2.00278C7.29781 1.76078 7.23511 1.54381 7.10972 1.35188C6.98433 1.1516 6.81714 0.993046 6.60815 0.876217C6.40752 0.759388 6.186 0.700973 5.94357 0.700973C5.58412 0.700973 5.2581 0.851182 4.96552 1.1516C4.67294 1.44367 4.45559 1.8484 4.31348 2.36579H3.67398C3.51515 1.79833 3.28945 1.38108 2.99687 1.11405C2.71264 0.838664 2.39916 0.700973 2.05643 0.700973C1.82236 0.700973 1.60084 0.759388 1.39185 0.876217C1.18286 0.993046 1.01567 1.1516 0.890282 1.35188C0.76489 1.54381 0.702194 1.76078 0.702194 2.00278C0.702194 2.35327 0.798328 2.75382 0.990596 3.20445C1.1745 3.63004 1.63427 4.34353 2.36991 5.34492C2.73772 5.82893 3.05538 6.2879 3.32288 6.72184C3.59039 7.14743 3.81191 7.54381 3.98746 7.91099Z" fill="currentColor"/>
-                      </svg>
-                    </button>
-                  );
-                })()}
-              </div>
             </div>
                 )}
                 {commitment && <CommitmentCard commitment={commitment} />}
@@ -3256,7 +3276,7 @@
     // the words lighting up at a steady pace, then the screen shrinks back
     // into a mantra card with a one-line echo of today's "What's behind it"
     // + Journal. Figma: "Mantras" page. Playground: mantras-playground.html.
-    const MANTRA_SET_MAX = 12;
+    // (No cap on the personal mantra set.)
     const MANTRA_GROW_MS = 650;
     const MANTRA_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
     const MANTRA_WORD_MS = 480; // "Calm" pace
@@ -3323,6 +3343,22 @@
       return (
         <p style={{ fontFamily: "'Lora', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: size, lineHeight: (size <= 20 ? 32 : 42) + "px",
           color, width: size <= 20 ? 290 : 300, maxWidth: "calc(100vw - 72px)", textAlign: "center", textWrap: "balance", margin: 0, ...style }}>{text}</p>
+      );
+    }
+    function HeartIcon({ on, size = 16 }) {
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: "block" }} aria-hidden="true">
+          <path d="M12 20.5s-7.5-4.6-9.6-9.1C.9 8.1 2.9 4.5 6.4 4.5c2.2 0 3.7 1.3 5.6 3.4 1.9-2.1 3.4-3.4 5.6-3.4 3.5 0 5.5 3.6 4 6.9-2.1 4.5-9.6 9.1-9.6 9.1z"
+            fill={on ? tangerine : "none"} stroke={on ? tangerine : sage} strokeWidth="1.6" strokeLinejoin="round" />
+        </svg>
+      );
+    }
+    function HeartButton({ on, onClick, size = 16, pad = 8 }) {
+      return (
+        <button onClick={onClick} aria-label={on ? "Un-heart mantra" : "Heart mantra"} aria-pressed={on}
+          style={{ background: "none", border: "none", padding: pad, margin: -pad, cursor: "pointer", lineHeight: 0 }}>
+          <HeartIcon on={on} size={size} />
+        </button>
       );
     }
     function MantraPill({ children, onClick, style }) {
@@ -3557,7 +3593,7 @@
     // on the done card grows it again; ← back on the intro shrinks back.
     // library = the profile's Mantras page: same deck + run-through, but each
     // card has its own Practice button and finishing shrinks back into the deck.
-    function MantraStepView({ items, practicedFor, initial, suggestion, isToday, topBar, dotsEl, stepLabel, saving, onComplete, onEditSet, requestLine, library, onBack, onPracticed }) {
+    function MantraStepView({ items, practicedFor, initial, suggestion, isToday, topBar, dotsEl, stepLabel, saving, onComplete, onEditSet, requestLine, library, onBack, onPracticed, isLiked = () => false, onToggleLike }) {
       const { useState: useS, useEffect: useE, useRef: useR, useMemo: useM } = React;
       const [phase, setPhase] = useS("pick");
       const [index, setIndex] = useS(0);
@@ -3602,6 +3638,8 @@
           const i = list.findIndex(m => normMantra(m.text) === normMantra(initial.text));
           const m = i >= 0 ? list.splice(i, 1)[0] : { idx: initial.idx ?? 0, text: initial.text };
           list.unshift(m); firstKind = "initial";
+        } else if (suggestion && suggestion.newText) {
+          list.unshift({ idx: "new", text: suggestion.newText, isNew: true }); firstKind = "new";
         } else if (suggestion && suggestion.pick != null && list[suggestion.pick]) {
           const m = list.splice(suggestion.pick, 1)[0];
           list.unshift(m); firstKind = "suggested";
@@ -3613,6 +3651,7 @@
         if (library) return { label: "Mantra", labelColor: shale, practiced: practicedFor(m.text) };
         const isFirst = deck.first && m === deck.first;
         if (isFirst && deck.firstKind === "suggested") return { label: "Suggested for today", labelColor: shale, practiced: practicedFor(m.text) };
+        if (isFirst && deck.firstKind === "new") return { label: "Something new for today", labelColor: shale, practiced: 0 };
         if (isFirst && deck.firstKind === "initial") return { label: isToday ? "Today’s mantra" : "Your mantra", labelColor: shale, practiced: practicedFor(m.text) };
         return { label: "Mantra", labelColor: sage, practiced: practicedFor(m.text) };
       };
@@ -3831,6 +3870,11 @@
                   <div style={{ position: "absolute", top: donePillTop, left: 0, right: 0, display: "flex", justifyContent: "center", animation: "mantraFadeIn .35s ease both" }}>
                     <MantraPill onClick={growFromDone} style={donePillStyle}>Practice Again</MantraPill>
                   </div>
+                  {onToggleLike && (
+                    <div style={{ position: "absolute", top: 24, right: 20, animation: "mantraFadeIn .35s ease both" }}>
+                      <HeartButton on={isLiked(chosen)} onClick={() => onToggleLike(chosen)} />
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -3852,11 +3896,12 @@
     }
 
     // ─── Profile → Mantras: your set as a deck, practice any of them ─────
-    function MantraLibraryView({ items, practicedFor, onBack, onSaveSet, onSuggest, onPracticed }) {
+    function MantraLibraryView({ items, practicedFor, onBack, onSaveSet, onSuggest, onPracticed, aiOn, onToggleAI, isLiked, onToggleLike }) {
       const { useState: useS } = React;
       const [editing, setEditing] = useS(false);
       if (editing) return (
-        <EditMantrasView items={items || []} practicedFor={practicedFor} onBack={() => setEditing(false)} onSave={onSaveSet} onSuggest={onSuggest} />
+        <EditMantrasView items={items || []} practicedFor={practicedFor} onBack={() => setEditing(false)} onSave={onSaveSet} onSuggest={onSuggest}
+          aiOn={aiOn} onToggleAI={onToggleAI} isLiked={isLiked} onToggleLike={onToggleLike} />
       );
       return (
         <Shell key="mantra-library">
@@ -3867,7 +3912,7 @@
     }
 
     // ─── Edit the personal set ───────────────────────────────────────────
-    function EditMantrasView({ items, practicedFor, onBack, onSave, onSuggest }) {
+    function EditMantrasView({ items, practicedFor, onBack, onSave, onSuggest, aiOn = true, onToggleAI, isLiked = () => false, onToggleLike }) {
       const { useState: useS } = React;
       const [editing, setEditing] = useS(null);
       const [draft, setDraft] = useS("");
@@ -3876,7 +3921,7 @@
       const newIdx = () => 20000 + (Date.now() % 100000000);
       const add = (text) => {
         const t = String(text || "").trim();
-        if (!t || items.length >= MANTRA_SET_MAX || items.some(m => normMantra(m.text) === normMantra(t))) return false;
+        if (!t || items.some(m => normMantra(m.text) === normMantra(t))) return false;
         onSave([...items, { idx: newIdx(), text: t }]); return true;
       };
       const saveEdit = () => {
@@ -3894,7 +3939,18 @@
         <Shell key="edit-mantras">
           <button style={s.backBtn} onClick={onBack}>← back</button>
           <h2 style={{ fontFamily: serif, fontStyle: "italic", fontWeight: 400, fontSize: 28, color: ink, margin: "0 0 8px" }}>Your mantras</h2>
-          <p style={{ fontFamily: serif, fontStyle: "italic", fontSize: 13, color: moss, lineHeight: 1.5, margin: "0 0 24px" }}>Keep it to about ten — the ones that actually land. Short is easier to carry.</p>
+          <p style={{ fontFamily: serif, fontStyle: "italic", fontSize: 13, color: moss, lineHeight: 1.5, margin: "0 0 24px" }}>The ones that actually land. Short is easier to carry. Heart the ones that hit home.</p>
+          {onToggleAI && (
+            <div style={{ background: ink, borderRadius: 14, padding: "16px 16px 18px", marginBottom: 20 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, marginBottom: 6 }}>
+                <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 18, color: cream }}>Suggest new mantras</span>
+                <NotifSwitch on={aiOn} onChange={onToggleAI} label="Suggest new mantras" />
+              </div>
+              <p style={{ fontFamily: serif, fontSize: 13, lineHeight: "20px", color: cream, margin: 0 }}>
+                Some days the check-in will offer a fresh mantra written for you — shaped by your quiz answers and the ones you’ve hearted. Choose it and it joins your set.
+              </p>
+            </div>
+          )}
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {items.map(m => (
               <div key={m.idx + ":" + m.text} style={{ background: ink, borderRadius: 14, padding: "14px 16px" }}>
@@ -3911,6 +3967,7 @@
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <span style={{ flex: 1, fontFamily: serif, fontStyle: "italic", fontSize: 16, lineHeight: 1.5, color: "#fff" }}>{m.text}</span>
                     <span style={{ fontFamily: mono, fontSize: 9, color: sage, whiteSpace: "nowrap" }}>{practicedFor(m.text)}×</span>
+                    {onToggleLike && <HeartButton on={isLiked(m)} onClick={() => onToggleLike(m)} size={14} pad={6} />}
                     <button onClick={() => { setEditing(m.idx); setDraft(m.text); }} style={{ background: "none", border: "none", fontFamily: mono, fontSize: 11, color: sage, cursor: "pointer", padding: 0 }}>edit</button>
                     <button onClick={() => onSave(items.filter(x => x !== m))} aria-label="Remove" style={{ background: "none", border: "none", fontFamily: mono, fontSize: 13, color: sage, cursor: "pointer", padding: 0 }}>✕</button>
                   </div>
@@ -3918,7 +3975,7 @@
               </div>
             ))}
           </div>
-          {items.length < MANTRA_SET_MAX && (
+          {(
             <div style={{ border: `1px dashed ${sage}`, borderRadius: 14, padding: "14px 16px", marginTop: 8, display: "flex", gap: 10, alignItems: "center" }}>
               <input value={adding} onChange={e => setAdding(e.target.value)} placeholder="Add a mantra…"
                 onKeyDown={e => { if (e.key === "Enter" && add(adding)) setAdding(""); }}
@@ -3926,7 +3983,7 @@
               <button onClick={() => { if (add(adding)) setAdding(""); }} aria-label="Add" style={{ background: "none", border: "none", fontFamily: mono, fontSize: 18, color: moss, cursor: "pointer", padding: 0 }}>+</button>
             </div>
           )}
-          <div style={{ fontFamily: mono, fontSize: 10, color: moss, textAlign: "right", marginTop: 10 }}>{items.length} / {MANTRA_SET_MAX}</div>
+          <div style={{ fontFamily: mono, fontSize: 10, color: moss, textAlign: "right", marginTop: 10 }}>{items.length} mantra{items.length === 1 ? "" : "s"}</div>
           <div style={{ marginTop: 28 }}>
             {suggested === null && (
               <button onClick={suggest} style={{ background: "none", border: "none", padding: 0, fontFamily: serif, fontStyle: "italic", fontSize: 13, color: rust, cursor: "pointer" }}>Not sure what to add? Suggest from my journals →</button>
@@ -3938,7 +3995,7 @@
                   <p style={{ fontFamily: serif, fontStyle: "italic", fontSize: 17, lineHeight: 1.5, color: "#fff", margin: "0 0 12px" }}>{suggested}</p>
                   <div style={{ display: "flex", justifyContent: "flex-end", gap: 18 }}>
                     <button onClick={suggest} style={{ background: "none", border: "none", fontFamily: mono, fontSize: 11, color: sage, cursor: "pointer" }}>try another</button>
-                    {items.length < MANTRA_SET_MAX && <button onClick={() => { if (add(suggested)) setSuggested(null); }} style={{ background: "none", border: "none", fontFamily: mono, fontSize: 11, color: tangerine, cursor: "pointer" }}>+ add</button>}
+                    {<button onClick={() => { if (add(suggested)) setSuggested(null); }} style={{ background: "none", border: "none", fontFamily: mono, fontSize: 11, color: tangerine, cursor: "pointer" }}>+ add</button>}
                   </div>
                 </div>
               ) : <button onClick={suggest} style={{ background: "none", border: "none", padding: 0, fontFamily: mono, fontSize: 11, color: moss, cursor: "pointer" }}>Couldn't get a suggestion — try again</button>
@@ -3966,7 +4023,7 @@
       return <textarea ref={ref} value={value} rows={1} {...rest} style={{ ...style, overflow: "hidden" }} />;
     }
 
-    function DailyEntryView({ day, prompt, moodOrder, initialMoods, initialNote, initialJournal, onBack, onSaved, customPrompts = [], onSaveCustomPrompts, initialStep = 1, affirmation, ratings = {}, onRateAff, onDislikeAff, onRefreshAff, onChooseAff, ouraSync, onPullOura, mantraSet, mantraPracticedFor = () => 0, onSaveMantraSet, onSuggestMantra, onPickMantra }) {
+    function DailyEntryView({ day, prompt, moodOrder, initialMoods, initialNote, initialJournal, onBack, onSaved, customPrompts = [], onSaveCustomPrompts, initialStep = 1, affirmation, ratings = {}, onRateAff, onDislikeAff, onRefreshAff, onChooseAff, ouraSync, onPullOura, mantraSet, mantraPracticedFor = () => 0, onSaveMantraSet, onSuggestMantra, onPickMantra, mantraAI = true, onToggleMantraAI, isMantraLiked = () => false, onToggleMantraLike, getAboutYou }) {
       const { useState: useS, useEffect: useE } = React;
       const [step, setStep] = useS(initialStep);
       const [showAddMood, setShowAddMood] = useS(false);
@@ -4112,21 +4169,28 @@
       // mantra card at the end. Nothing written → no line.
       const [mantraSuggestion, setMantraSuggestion] = useS(null);
       const mantraReady = isTodayEntry && step > journalStep;
-      const mantraCtx = (() => { const str = [(mantraSet || []).map(m => m.text).join('|'), entryMoods.map(m => m.label).join(','), note.trim(), journalText.trim()].join('§'); let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0; return (h >>> 0).toString(36); })();
+      const mantraCtx = (() => { const str = [String(mantraAI), (mantraSet || []).map(m => m.text).join('|'), entryMoods.map(m => m.label).join(','), note.trim(), journalText.trim()].join('§'); let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0; return (h >>> 0).toString(36); })();
       useE(() => {
-        if (!mantraReady || !mantraSet || !mantraSet.length) return;
+        if (!mantraReady || !mantraSet) return;
+        const allowNew = mantraAI !== false;
+        if (!mantraSet.length && !allowNew) return;
         let cancelled = false;
         (async () => {
           const n = note.trim(), j = journalText.trim();
-          const raw = await callClaude('mantra_today', { mantras: mantraSet.map(m => m.text), moods: entryMoods.map(m => m.label), note: n, journal: j });
+          // Their own and AI-added mantras are sent the same way — no source labels.
+          const raw = await callClaude('mantra_today', {
+            mantras: mantraSet.map(m => m.text),
+            liked: mantraSet.filter(m => isMantraLiked(m)).map(m => m.text),
+            moods: entryMoods.map(m => m.label), note: n, journal: j,
+            about: getAboutYou ? getAboutYou() : {}, allowNew,
+          });
           if (cancelled) return;
           const pm = /PICK:\s*(\d+)/i.exec(raw || '');
-          const lm = /LINE:[ \t]*(.*)/i.exec(raw || '');
-          let line = lm ? lm[1].trim().replace(/^["“']+|["”']+$/g, '').trim() : '';
-          if (!n && !j) line = '';
-          if (/^(blank|none|empty|n\/a|-|\(blank\)|<blank>)?$/i.test(line)) line = '';
+          const nm = /NEW:[ \t]*(.+)/i.exec(raw || '');
+          let newText = allowNew && nm ? nm[1].trim().replace(/^["“']+|["”']+$/g, '').trim() : '';
+          if (newText && mantraSet.some(m => normMantra(m.text) === normMantra(newText))) newText = '';
           const pick = pm ? Number(pm[1]) : null;
-          setMantraSuggestion({ pick: pick != null && pick >= 0 && pick < mantraSet.length ? pick : null, line });
+          setMantraSuggestion({ pick: !newText && pick != null && pick >= 0 && pick < mantraSet.length ? pick : null, newText: newText || null });
         })();
         return () => { cancelled = true; };
       }, [mantraReady, mantraCtx]);
@@ -4381,12 +4445,14 @@
       // MantraStepView. Continue on its last screen saves the check-in.
       if (showEditSet) return (
         <EditMantrasView items={mantraSet || []} practicedFor={mantraPracticedFor}
+          aiOn={mantraAI} onToggleAI={onToggleMantraAI} isLiked={isMantraLiked} onToggleLike={onToggleMantraLike}
           onBack={() => setShowEditSet(false)} onSave={onSaveMantraSet} onSuggest={onSuggestMantra} />
       );
       const dayAffInSet = storedDayAff && (mantraSet || []).some(m => normMantra(m.text) === normMantra(storedDayAff.text)) ? storedDayAff : null;
       return (
         <Shell key="checkin-5">
           <MantraStepView items={mantraSet || []} practicedFor={mantraPracticedFor} initial={dayAffInSet} suggestion={mantraSuggestion}
+            isLiked={isMantraLiked} onToggleLike={onToggleMantraLike}
             isToday={day.key === getTodayKey()} topBar={topBar} dotsEl={dotsEl} stepLabel={stepLabel} saving={saving}
             onComplete={(m) => handleSave(m)} onEditSet={() => setShowEditSet(true)} requestLine={requestMantraLine} />
         </Shell>
