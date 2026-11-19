@@ -708,9 +708,62 @@
         options: ["Feeling better about myself", "Understanding my mood patterns", "Processing feelings through writing", "Building a daily check-in habit", "Just exploring for now"] },
     ];
 
-    function PersonalizationQuiz({ initialTraits = [], initialInsecurities = [], onCancel, onComplete }) {
+    const QUIZ_SECTION_NAMES = {
+      traits: "What you love about yourself", insecurities: "Fears & insecurities", feelGood: "What makes you feel good",
+      feelBad: "What brings you down", supportStyle: "On hard days", primaryGoal: "What you want from Feel Good",
+    };
+
+    // Settings hub — every quiz section at a glance; tap one to edit just that.
+    function SettingsHubView({ answers, onBack, onSave }) {
+      const [editing, setEditing] = React.useState(null); // quiz key, or "all" for the full quiz
+      if (editing) return (
+        <PersonalizationQuiz initialTraits={answers.traits} initialInsecurities={answers.insecurities}
+          onlyKey={editing === "all" ? null : editing}
+          onCancel={() => setEditing(null)}
+          onComplete={async (a) => { await onSave(a); setEditing(null); }} />
+      );
+      const mono = "'DM Mono', monospace", serif = "'Lora', Georgia, serif";
+      return (
+        <Shell key="settings-hub">
+          <button style={s.backBtn} onClick={onBack}>← back</button>
+          <h2 style={s.pageTitle}>Your profile</h2>
+          <p style={{ fontFamily: serif, fontStyle: "italic", fontSize: 14, color: moss, lineHeight: 1.5, margin: "-12px 0 24px" }}>What Feel Good knows about you. It shapes your mantras, insights and prompts — tap a section to change it.</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {QUIZ_QUESTIONS.map(q => {
+              const vals = (answers[q.key] || []).filter(Boolean);
+              return (
+                <button key={q.key} onClick={() => setEditing(q.key)}
+                  style={{ background: ink, border: "none", borderRadius: 16, padding: 20, textAlign: "left", cursor: "pointer", display: "block", width: "100%" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, marginBottom: 14 }}>
+                    <span style={{ fontFamily: mono, fontSize: 10, color: sage, letterSpacing: "0.12em", textTransform: "uppercase" }}>{QUIZ_SECTION_NAMES[q.key]}</span>
+                    <span style={{ fontFamily: mono, fontSize: 10, color: sage, flexShrink: 0 }}>Edit ›</span>
+                  </div>
+                  {vals.length ? (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      {vals.map((v, i) => (
+                        <span key={i} style={{ border: "1px solid #97A891", borderRadius: 18, padding: "5px 12px", fontFamily: serif, fontSize: 14, lineHeight: "20px", color: cream, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v}</span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p style={{ fontFamily: serif, fontStyle: "italic", fontSize: 14, color: shale, margin: 0 }}>Nothing here yet — tap to add.</p>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ textAlign: "center", marginTop: 28 }}>
+            <button onClick={() => setEditing("all")} style={{ background: "none", border: "none", fontFamily: mono, fontSize: 11, color: moss, cursor: "pointer" }}>Retake the full quiz</button>
+          </div>
+        </Shell>
+      );
+    }
+
+    function PersonalizationQuiz({ initialTraits = [], initialInsecurities = [], onCancel, onComplete, onlyKey = null }) {
       const { useState: useS, useEffect: useE } = React;
-      const [step, setStep] = useS(0); // 0 = intro, 1..N = questions, N+1 = done
+      // onlyKey: open straight to one question (from the Settings hub); Save writes and returns.
+      const onlyStep = onlyKey ? QUIZ_QUESTIONS.findIndex(x => x.key === onlyKey) + 1 : 0;
+      const [step, setStep] = useS(onlyStep || 0); // 0 = intro, 1..N = questions, N+1 = done
+      const [loaded, setLoaded] = useS(false);
       const [answers, setAnswers] = useS({ traits: initialTraits, insecurities: initialInsecurities, feelGood: [], feelBad: [], supportStyle: [], primaryGoal: [] });
       const [draft, setDraft] = useS("");
       const [finishing, setFinishing] = useS(false);
@@ -722,6 +775,7 @@
           ]);
           const arr = (v) => Array.isArray(v) ? v : (v ? [v] : []);
           setAnswers(a => ({ ...a, feelGood: arr(fg), feelBad: arr(fb), supportStyle: arr(ss), primaryGoal: arr(pg) }));
+          setLoaded(true);
         })();
       }, []);
 
@@ -737,7 +791,14 @@
       const removeEntry = (i) => setAnswers(a => ({ ...a, [q.key]: a[q.key].filter((_, idx) => idx !== i) }));
       const toggleOption = (opt) => setAnswers(a => ({ ...a, [q.key]: a[q.key].includes(opt) ? a[q.key].filter(o => o !== opt) : [...a[q.key], opt] }));
       // Typing something and hitting Next without tapping Add still counts.
+      async function saveOnly() {
+        const final = q && q.type === "multi" && draft.trim() ? { ...answers, [q.key]: [...answers[q.key], draft.trim()] } : answers;
+        setFinishing(true);
+        await onComplete(final);
+        setFinishing(false);
+      }
       function next() {
+        if (onlyKey) { saveOnly(); return; }
         if (q && q.type === "multi" && draft.trim()) {
           setAnswers(a => ({ ...a, [q.key]: [...a[q.key], draft.trim()] }));
           setDraft("");
@@ -759,8 +820,8 @@
       return (
         <Shell key={`quiz-${step}`}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32, minHeight: 20 }}>
-            <button style={{ ...s.backBtn, padding: 0, cursor: "pointer" }} onClick={step === 0 ? onCancel : () => setStep(st => st - 1)}>{step === 0 ? "← cancel" : "← back"}</button>
-            {q && (
+            <button style={{ ...s.backBtn, padding: 0, cursor: "pointer" }} onClick={step === 0 || onlyKey ? onCancel : () => setStep(st => st - 1)}>{step === 0 ? "← cancel" : "← back"}</button>
+            {q && !onlyKey && (
               <div style={{ display: "flex", gap: 6 }}>
                 {QUIZ_QUESTIONS.map((_, i) => <div key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: i === qIndex ? ink : "rgba(44,59,42,0.2)" }} />)}
               </div>
@@ -779,7 +840,7 @@
 
           {q && (
             <div>
-              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 14 }}>{step} of {total}</div>
+              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: moss, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 14 }}>{onlyKey ? QUIZ_SECTION_NAMES[q.key] : `${step} of ${total}`}</div>
               <h2 style={titleStyle}>{q.title}</h2>
               <p style={subStyle}>{q.sub}</p>
               {q.type === "multi" ? (
@@ -811,9 +872,15 @@
                   })}
                 </div>
               )}
-              <button style={{ ...primary, marginTop: 28, opacity: canAdvance ? 1 : 0.4 }} disabled={!canAdvance} onClick={next}>
-                {step === total ? "Save" : "Next"}
-              </button>
+              {onlyKey ? (
+                <button style={{ ...primary, marginTop: 28, opacity: loaded && !finishing ? 1 : 0.4 }} disabled={!loaded || finishing} onClick={next}>
+                  {finishing ? "Saving…" : "Save"}
+                </button>
+              ) : (
+                <button style={{ ...primary, marginTop: 28, opacity: canAdvance ? 1 : 0.4 }} disabled={!canAdvance} onClick={next}>
+                  {step === total ? "Save" : "Next"}
+                </button>
+              )}
             </div>
           )}
 
@@ -1321,7 +1388,7 @@
         await storageSet(`affirmation:${todayKey}`, aff);
       }
 
-      async function handleSettingsQuizComplete(answers) {
+      async function saveProfileAnswers(answers) {
         const before = JSON.stringify({ t: traits.map(t => t.full), i: insecurities, ...aboutYouRef.current });
         const traitsChanged = before !== JSON.stringify({ t: answers.traits, i: answers.insecurities, feelGood: answers.feelGood, feelBad: answers.feelBad, supportStyle: answers.supportStyle, primaryGoal: answers.primaryGoal });
         const newTraits = answers.traits.map((t, i) => traits.find(x => x.full === t) || { id: `trait_${Date.now()}_${i}`, label: t.split(" ").slice(0, 3).join(" "), full: t });
@@ -1341,7 +1408,6 @@
           storageSet("settings:primary_goal", answers.primaryGoal),
           storageSet("settings:onboarding_complete", true),
         ]);
-        goBackView();
       }
 
       // ─── Mantra set helpers ──────────────────────────────────────────
@@ -2554,7 +2620,8 @@
 
       // ─── TRAITS VIEW ───────────────────────────────────────────────
       if (view === "traits") {
-        return <PersonalizationQuiz initialTraits={traits.map(t => t.full)} initialInsecurities={insecurities} onCancel={goBackView} onComplete={handleSettingsQuizComplete} />;
+        return <SettingsHubView answers={{ traits: traits.map(t => t.full), insecurities, ...aboutYou }}
+          onBack={goBackView} onSave={saveProfileAnswers} />;
       }
 
       // ─── HOME VIEW ─────────────────────────────────────────────────
