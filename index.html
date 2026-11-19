@@ -713,6 +713,16 @@
       feelBad: "What brings you down", supportStyle: "On hard days", primaryGoal: "What you want from Feel Good",
     };
 
+    // How each section is used — shown under its headline on the Settings hub.
+    const QUIZ_SECTION_USES = {
+      traits: "Gives your mantras your voice, so the ones written for you sound like you.",
+      insecurities: "Lets your mantras speak to what actually weighs on you, instead of around it.",
+      feelGood: "Your insights and journal summary look for these, and notice when they show up — or go missing.",
+      feelBad: "Helps your insights spot the patterns that tend to pull you down, ideally before you do.",
+      supportStyle: "Sets the tone of your insights and mantras — encouragement, space, or a gentle push.",
+      primaryGoal: "Guides what Feel Good leans into for you — your patterns, writing, mantras or the daily habit.",
+    };
+
     // Settings hub — every quiz section at a glance; tap one to edit just that.
     function SettingsHubView({ answers, onBack, onSave }) {
       const [editing, setEditing] = React.useState(null); // quiz key, or "all" for the full quiz
@@ -734,10 +744,11 @@
               return (
                 <button key={q.key} onClick={() => setEditing(q.key)}
                   style={{ background: ink, border: "none", borderRadius: 16, padding: 20, textAlign: "left", cursor: "pointer", display: "block", width: "100%" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, marginBottom: 14 }}>
-                    <span style={{ fontFamily: mono, fontSize: 10, color: sage, letterSpacing: "0.12em", textTransform: "uppercase" }}>{QUIZ_SECTION_NAMES[q.key]}</span>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+                    <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 16, color: cream }}>{QUIZ_SECTION_NAMES[q.key]}</span>
                     <span style={{ fontFamily: mono, fontSize: 10, color: sage, flexShrink: 0 }}>Edit ›</span>
                   </div>
+                  <p style={{ fontFamily: serif, fontSize: 13, lineHeight: "20px", color: shale, margin: "6px 0 16px" }}>{QUIZ_SECTION_USES[q.key]}</p>
                   {vals.length ? (
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                       {vals.map((v, i) => (
