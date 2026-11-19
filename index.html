@@ -737,28 +737,27 @@
         <Shell key="settings-hub">
           <button style={s.backBtn} onClick={onBack}>← back</button>
           <h2 style={s.pageTitle}>Your profile</h2>
-          <p style={{ fontFamily: serif, fontStyle: "italic", fontSize: 14, color: moss, lineHeight: 1.5, margin: "-12px 0 24px" }}>What Feel Good knows about you. It shapes your mantras, insights and prompts — tap a section to change it.</p>
+          <p style={{ fontFamily: serif, fontStyle: "italic", fontSize: 14, color: moss, lineHeight: 1.5, margin: "-12px 0 24px" }}>What Feel Good knows about you. It shapes your mantras, insights and prompts. Edit any section at any time.</p>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {QUIZ_QUESTIONS.map(q => {
               const vals = (answers[q.key] || []).filter(Boolean);
+              // Answers on one line, dot-separated (clamped to 2 lines).
+              const summary = vals.join("  ·  ");
               return (
-                <button key={q.key} onClick={() => setEditing(q.key)}
-                  style={{ background: ink, border: "none", borderRadius: 16, padding: 20, textAlign: "left", cursor: "pointer", display: "block", width: "100%" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
-                    <span style={{ fontFamily: serif, fontStyle: "italic", fontSize: 16, color: cream }}>{QUIZ_SECTION_NAMES[q.key]}</span>
-                    <span style={{ fontFamily: mono, fontSize: 10, color: sage, flexShrink: 0 }}>Edit ›</span>
-                  </div>
-                  <p style={{ fontFamily: serif, fontSize: 13, lineHeight: "20px", color: shale, margin: "6px 0 16px" }}>{QUIZ_SECTION_USES[q.key]}</p>
-                  {vals.length ? (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                      {vals.map((v, i) => (
-                        <span key={i} style={{ border: "1px solid #97A891", borderRadius: 18, padding: "5px 12px", fontFamily: serif, fontSize: 14, lineHeight: "20px", color: cream, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v}</span>
-                      ))}
-                    </div>
-                  ) : (
-                    <p style={{ fontFamily: serif, fontStyle: "italic", fontSize: 14, color: shale, margin: 0 }}>Nothing here yet — tap to add.</p>
-                  )}
-                </button>
+                <div key={q.key} style={{ background: ink, borderRadius: 16, padding: 20 }}>
+                  <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 16, color: cream }}>{QUIZ_SECTION_NAMES[q.key]}</div>
+                  <p style={{ fontFamily: serif, fontSize: 13, lineHeight: "20px", color: cream, margin: "6px 0 0" }}>{QUIZ_SECTION_USES[q.key]}</p>
+                  <div style={{ borderTop: "1px solid rgba(255,255,255,0.12)", margin: "16px 0 14px" }} />
+                  <div style={{ fontFamily: mono, fontSize: 10, color: sage, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 6 }}>Your answers</div>
+                  <p style={{ fontFamily: serif, fontSize: 15, lineHeight: "24px", color: vals.length ? cream : shale, fontStyle: vals.length ? "normal" : "italic", margin: 0,
+                    display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                    {vals.length ? summary : "Nothing here yet."}
+                  </p>
+                  <button onClick={() => setEditing(q.key)}
+                    style={{ width: "100%", height: 32, marginTop: 18, background: "none", border: `1px solid ${bone}`, borderRadius: 18, fontFamily: mono, fontSize: 10, color: bone, cursor: "pointer" }}>
+                    {vals.length ? "Edit" : "Add"}
+                  </button>
+                </div>
               );
             })}
           </div>
