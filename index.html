@@ -738,28 +738,18 @@
           <button style={s.backBtn} onClick={onBack}>← back</button>
           <h2 style={s.pageTitle}>Your profile</h2>
           <p style={{ fontFamily: serif, fontStyle: "italic", fontSize: 14, color: moss, lineHeight: 1.5, margin: "-12px 0 24px" }}>What Feel Good knows about you. It shapes your mantras, insights and prompts. Edit any section at any time.</p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {QUIZ_QUESTIONS.map(q => {
-              const vals = (answers[q.key] || []).filter(Boolean);
-              // Answers on one line, dot-separated (clamped to 2 lines).
-              const summary = vals.join("  ·  ");
-              return (
-                <div key={q.key} style={{ background: ink, borderRadius: 16, padding: 20 }}>
-                  <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 16, color: cream }}>{QUIZ_SECTION_NAMES[q.key]}</div>
-                  <p style={{ fontFamily: serif, fontSize: 13, lineHeight: "20px", color: cream, margin: "6px 0 0" }}>{QUIZ_SECTION_USES[q.key]}</p>
-                  <div style={{ borderTop: "1px solid rgba(255,255,255,0.12)", margin: "16px 0 14px" }} />
-                  <div style={{ fontFamily: mono, fontSize: 10, color: sage, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 6 }}>Your answers</div>
-                  <p style={{ fontFamily: serif, fontSize: 15, lineHeight: "24px", color: vals.length ? cream : shale, fontStyle: vals.length ? "normal" : "italic", margin: 0,
-                    display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-                    {vals.length ? summary : "Nothing here yet."}
-                  </p>
-                  <button onClick={() => setEditing(q.key)}
-                    style={{ width: "100%", height: 32, marginTop: 18, background: "none", border: `1px solid ${bone}`, borderRadius: 18, fontFamily: mono, fontSize: 10, color: bone, cursor: "pointer" }}>
-                    {vals.length ? "Edit" : "Add"}
-                  </button>
+          {/* Link list — tap a section to edit just that one. */}
+          <div style={{ borderTop: "1px solid rgba(44,59,42,0.12)" }}>
+            {QUIZ_QUESTIONS.map(q => (
+              <button key={q.key} onClick={() => setEditing(q.key)}
+                style={{ display: "flex", alignItems: "center", gap: 16, width: "100%", background: "none", border: "none", borderBottom: "1px solid rgba(44,59,42,0.12)", padding: "18px 0", textAlign: "left", cursor: "pointer" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: serif, fontStyle: "italic", fontSize: 18, color: ink }}>{QUIZ_SECTION_NAMES[q.key]}</div>
+                  <div style={{ fontFamily: serif, fontSize: 13, lineHeight: "20px", color: moss, marginTop: 4 }}>{QUIZ_SECTION_USES[q.key]}</div>
                 </div>
-              );
-            })}
+                <span aria-hidden="true" style={{ fontFamily: mono, fontSize: 18, color: moss, flexShrink: 0 }}>›</span>
+              </button>
+            ))}
           </div>
           <div style={{ textAlign: "center", marginTop: 28 }}>
             <button onClick={() => setEditing("all")} style={{ background: "none", border: "none", fontFamily: mono, fontSize: 11, color: moss, cursor: "pointer" }}>Retake the full quiz</button>
