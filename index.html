@@ -1431,14 +1431,16 @@
       const isMantraLiked = (m) => {
         if (!m) return false;
         const inSet = (mantraSet || []).find(x => normMantra(x.text) === normMantra(m.text));
-        if (!inSet) return !!m.isNew; // a new AI suggestion counts as hearted once you pick it
+        if (!inSet) return false; // a new AI suggestion isn't kept until you Save it
         return inSet.liked === true || (inSet.liked === undefined && legacyLikedMantras.has(inSet.idx));
       };
       const newMantraIdx = () => 20000 + (Date.now() % 100000000);
       async function toggleMantraLike(m) {
         const set = mantraSet || [];
         const i = set.findIndex(x => normMantra(x.text) === normMantra(m.text));
-        if (i < 0) { await saveMantraSet([...set, { idx: newMantraIdx(), text: m.text, source: 'ai', liked: !m.isNew }]); return; }
+        if (i < 0) { await saveMantraSet([...set, { idx: newMantraIdx(), text: m.text, source: 'ai', liked: true }]); return; }
+        // Un-saving a new AI mantra on the check-in's last card takes it back out of the set.
+        if (m.isNew && set[i].source === 'ai') { await saveMantraSet(set.filter((_, j) => j !== i)); return; }
         const liked = !isMantraLiked(set[i]);
         await saveMantraSet(set.map((x, j) => j === i ? { ...x, liked } : x));
       }
@@ -1447,12 +1449,12 @@
         await storageSet('settings:mantra_ai', v);
       }
       async function pickMantra(dayKey, m0) {
-        // Picking today's new AI mantra adds it to your set for good (hearted).
+        // A new AI mantra is used for today either way; it only joins your set if you tapped Save.
         let m = m0;
         const set = mantraSet || [];
         const existing = set.find(x => normMantra(x.text) === normMantra(m0.text));
         if (existing) m = existing;
-        else { m = { idx: newMantraIdx(), text: m0.text, source: 'ai', liked: true }; await saveMantraSet([...set, m]); }
+        else m = { idx: newMantraIdx(), text: m0.text };
         const aff = { text: m.text, idx: m.idx ?? 0 };
         await storageSet(`affirmation:${dayKey}`, aff);
         if (dayKey === todayKey) setAffirmation(aff);
@@ -3436,7 +3438,7 @@
     }
     // Label / practiced count — shared by the deck card and the growing
     // card so they fade out in exactly the same spots.
-    function MantraCardChrome({ label, labelColor, practiced, height, library, onPractice, hidePracticed }) {
+    function MantraCardChrome({ label, labelColor, practiced, height, library, onPractice, hidePracticed, liked, onLike }) {
       return (
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, height, pointerEvents: "none" }}>
           <div style={{ position: "absolute", top: 36, left: 0, right: 0, textAlign: "center", ...mantraLabelStyle(labelColor) }}>{label}</div>
@@ -3446,8 +3448,14 @@
             </div>
           )}
           {library && (
-            <div style={{ position: "absolute", bottom: 32, left: 0, right: 0, display: "flex", justifyContent: "center" }}>
+            <div style={{ position: "absolute", bottom: 32, left: 0, right: 0, display: "flex", justifyContent: "center", alignItems: "center", gap: 10 }}>
               <MantraPill onClick={onPractice} style={{ pointerEvents: onPractice ? "auto" : "none" }}>PRACTICE</MantraPill>
+              {onLike !== undefined && (
+                <button onClick={onLike || undefined} aria-label={liked ? "Un-heart mantra" : "Heart mantra"} aria-pressed={!!liked}
+                  style={{ width: 28, height: 28, borderRadius: 14, border: `1px solid ${sage}`, background: "none", padding: 0, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", pointerEvents: onLike ? "auto" : "none" }}>
+                  <HeartIcon on={!!liked} size={13} />
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -3482,7 +3490,7 @@
 
     // Swipeable stack — same geometry/easing as the favorites deck, with the
     // back cards peeking out below (Figma: Mantras – 1 Pick).
-    function MantraDeck({ items, index, setIndex, height, frontRef, cardInfo, goRef, onTouched, locked, library, onPractice, arrows }) {
+    function MantraDeck({ items, index, setIndex, height, frontRef, cardInfo, goRef, onTouched, locked, library, onPractice, arrows, isLiked, onToggleLike }) {
       const { useState: useS, useEffect: useE, useRef: useR } = React;
       const n = items.length;
       const at = (i) => items[((i % n) + n) % n];
@@ -3532,7 +3540,8 @@
                   transition: k === 0 && phase === "dragging" ? "none" : `transform .42s ${MANTRA_EASE}, opacity .42s ${MANTRA_EASE}, background .42s ${MANTRA_EASE}` }}>
                 <div style={{ opacity: L.dim, transition: `opacity .42s ${MANTRA_EASE}` }}>
                   <MantraCardChrome label={info.label} labelColor={info.labelColor} practiced={info.practiced} height={height}
-                    library={library} onPractice={front && onPractice ? () => onPractice(m) : undefined} hidePracticed={arrows} />
+                    library={library} onPractice={front && onPractice ? () => onPractice(m) : undefined} hidePracticed={arrows}
+                    liked={library && isLiked ? isLiked(m) : false} onLike={library && onToggleLike ? (front ? () => onToggleLike(m) : null) : undefined} />
                   {arrows && n > 1 && (
                     <div style={{ position: "absolute", bottom: 34, left: 0, right: 0, display: "flex", justifyContent: "center", gap: 24 }}>
                       {[["‹", 1], ["›", -1]].map(([g, d]) => (
@@ -3872,7 +3881,7 @@
             <p style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 14, lineHeight: "24px", color: ink, textAlign: "center", margin: "16px 0 54px" }}>Swipe to scroll through your mantras.</p>
             {deck.list.length > 0 ? (
               <MantraDeck items={deck.list} index={index} setIndex={setIndex} height={deckH} frontRef={frontRef} cardInfo={cardInfo}
-                goRef={goRef} onTouched={freeze} locked={phase !== "pick"} library onPractice={() => growFromPick()} />
+                goRef={goRef} onTouched={freeze} locked={phase !== "pick"} library onPractice={() => growFromPick()} isLiked={isLiked} onToggleLike={onToggleLike} />
             ) : (
               <p style={{ fontFamily: "'Lora', Georgia, serif", fontStyle: "italic", fontSize: 16, color: moss, textAlign: "center", margin: "60px 0" }}>Add a few mantras to get started.</p>
             )}
@@ -3934,14 +3943,17 @@
                   <div style={{ position: "absolute", top: doneTextY, left: 0, right: 0, display: "flex", justifyContent: "center", transform: "translateY(-50%)" }}>
                     <MantraText text={chosen.text} size={30} />
                   </div>
-                  <div style={{ position: "absolute", top: donePillTop, left: 0, right: 0, display: "flex", justifyContent: "center", animation: "mantraFadeIn .35s ease both" }}>
-                    <MantraPill onClick={growFromDone} style={donePillStyle}>Practice Again</MantraPill>
-                  </div>
-                  {onToggleLike && (
-                    <div style={{ position: "absolute", top: 24, right: 20, animation: "mantraFadeIn .35s ease both" }}>
-                      <HeartButton on={isLiked(chosen)} onClick={() => onToggleLike(chosen)} />
-                    </div>
-                  )}
+                  {chosen.isNew && onToggleLike && (() => {
+                    // New AI mantra: Save keeps it in your set for good. Not saved → today only.
+                    const saved = isLiked(chosen);
+                    return (
+                      <div style={{ position: "absolute", top: donePillTop, left: 0, right: 0, display: "flex", justifyContent: "center", animation: "mantraFadeIn .35s ease both" }}>
+                        <MantraPill onClick={() => onToggleLike(chosen)} style={{ ...donePillStyle, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, width: 120 }}>
+                          <HeartIcon on={saved} size={12} />{saved ? "Saved" : "Save"}
+                        </MantraPill>
+                      </div>
+                    );
+                  })()}
                 </>
               )}
             </div>
@@ -3972,7 +3984,7 @@
       );
       return (
         <Shell key="mantra-library">
-          <MantraStepView library items={items || []} practicedFor={practicedFor} onBack={onBack}
+          <MantraStepView library items={items || []} practicedFor={practicedFor} onBack={onBack} isLiked={isLiked} onToggleLike={onToggleLike}
             onEditSet={() => setEditing(true)} onPracticed={onPracticed} />
         </Shell>
       );
