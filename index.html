@@ -5198,11 +5198,23 @@
       // AI trend observation comparing physical vs emotional scores — cached by a fingerprint of the paired series
       useE(() => {
         if (!ouraConnected || pairedScoreDays.length < 3) return;
-        const cacheKey = 'settings:physical_emotional_trend_v1';
+        const cacheKey = 'settings:physical_coach_v1';
         const fingerprint = `${pairedScoreDays.length}_${pairedScoreDays[pairedScoreDays.length - 1]?.date || ''}`;
         storageGet(cacheKey).then(async cached => {
           if (cached?.text && cached.fingerprint === fingerprint) { setPhysicalTrend(cached.text); return; }
-          const text = await callClaude('physical_emotional_trend', { pairedDays: pairedScoreDays });
+          // Last ~3 weeks of sleep / readiness / steps alongside each day's mood score.
+          const moodBy = Object.fromEntries(moodScoreDays.map(d => [d.key, Math.round(d.score * 10) / 10]));
+          const recent = [...ouraDays].sort((a, b) => a.date < b.date ? -1 : 1).slice(-21).map(d => ({
+            date: d.date, sleep: d.sleep_hours != null ? Math.round(d.sleep_hours * 10) / 10 : null,
+            readiness: d.readiness_score != null ? Math.round(d.readiness_score) : null, steps: d.steps ?? null,
+            mood: moodBy[d.date] ?? null,
+          }));
+          const text = await callClaude('physical_coach', { days: recent, about: aboutYou });
+          if (!text) { // server not updated yet — fall back to the old summary, uncached
+            const old = await callClaude('physical_emotional_trend', { pairedDays: pairedScoreDays });
+            if (old) setPhysicalTrend(old);
+            return;
+          }
           if (text) { setPhysicalTrend(text); await storageSet(cacheKey, { text, fingerprint, generatedAt: new Date().toISOString() }); }
         });
       }, [ouraConnected, pairedScoreDays.length]);
