@@ -2079,7 +2079,7 @@
         // moodScoreDays is normally computed inside the "profile" branch
         // below (local to that block) — recomputed here from the same
         // historyDays source since this is a separate block/branch.
-        const phDaysWithMood = historyDays.filter(d => d.mood && d.mood.length > 0 && !d.future);
+        const phDaysWithMood = (allMoodDays || historyDays).filter(d => d.mood && d.mood.length > 0 && !d.future);
         const phMoodScoreDays = phDaysWithMood.map(d => ({ key: d.key, score: d.mood.reduce((acc, m) => acc + moodWeight(m.label, d.key), 0) / d.mood.length }));
         return <PhysicalHealthDetailView ouraSync={ouraSync} onPullOura={pullOura} moodScoreDays={phMoodScoreDays}
           onDisconnectOura={() => setOuraSync({ connected: false, days: [], syncError: null })} onBack={goBackView} />;
@@ -5518,8 +5518,8 @@
                   {physicalTrend || "Keep checking in — once we have a bit more overlapping data, we'll show you how your physical and emotional health track together."}
                 </p>
                 {pairedScoreDays.length >= 2 ? (
-                  <div style={{ marginLeft: -20, marginRight: -20 }}>
-                    <PhysicalEmotionalChart days={pairedScoreDays.slice(-14)} />
+                  <div data-no-swipe-back style={{ marginLeft: -20, marginRight: -20 }}>{/* full history, scrolls left/right */}
+                    <PhysicalEmotionalChartLarge days={pairedScoreDays} height={160} dayWidth={36} />
                   </div>
                 ) : (
                   <p style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: bone, opacity: 0.7, margin: "0 0 8px" }}>Not enough overlapping days yet to chart.</p>
